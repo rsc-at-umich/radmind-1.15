@@ -101,7 +101,7 @@ fs_walk( char *path, struct stat *st, char *type, struct applefileinfo *afinfo,
     }
 
     /* call the transcript code */
-    switch ( transcript( path, st, type, afinfo, pdel )) {
+    switch ( transcript_check( path, st, type, afinfo, pdel )) {
     case 2 :			/* negative directory */
 	for (;;) {
 	    tran = transcript_select();

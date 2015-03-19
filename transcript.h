@@ -38,6 +38,7 @@ extern int		cksum;
 extern int		fs_minus;
 extern FILE		*outtran;
 extern char		*path_prefix;
+extern int		 debug;
 
 struct pathinfo {
     char			pi_type;
@@ -61,9 +62,10 @@ struct transcript {
     int			t_linenum;
     int			t_eof;
     FILE		*t_in;
+    unsigned int	id;
 };
 
-int			transcript( char *, struct stat *, char *, struct applefileinfo *, int );
+int			transcript_check( char *, struct stat *, char *, struct applefileinfo *, int );
 void			transcript_init( char *kfile, int location );
 struct transcript	*transcript_select( void );
 void			transcript_parse( struct transcript * );

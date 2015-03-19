@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003-2014 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -59,12 +59,13 @@ extern char             *caFile, *caDir, *cert, *privatekey;
 precedent_transcript( char *kfile, char *file, int where )
 {
     extern struct transcript	*tran_head;
-    struct stat		st;
+    struct stat		file_stat;
     struct transcript	*tran;
     int			cmp = 0;
 
     /* verify that file exists on the local system */
-    if ( lstat( file, &st ) < 0 ) {
+    memset ((void *) &file_stat, 0, sizeof(file_stat));
+    if ( lstat( file, &file_stat ) < 0 ) {
 	perror( file );
 	exit( 2 );
     }
@@ -74,13 +75,29 @@ precedent_transcript( char *kfile, char *file, int where )
     transcript_init( kfile, where );
     outtran = stdout;
 
+
+    if (debug > 0)
+    	fprintf (stderr, "*debug: Searching for '%s' in transcripts\n", file);
+
     /* check exclude list */
     if ( t_exclude( file )) {
+    	if (debug )
+	    fprintf (stderr, "*debug: But it's excluded.\n");
+
 	excluded = 1;
 	return( NULL );
     }
 
-    for ( tran = tran_head; !tran->t_eof; tran = tran->t_next ) {
+    for ( tran = tran_head; tran != (struct transcript *) NULL; tran = tran->t_next ) {
+
+	/* Skip NULL/empty transcripts */
+	if ( tran->t_eof ) {
+	    if (debug > 1)
+	    	fprintf (stderr, "*debug: empty transcript t:['%s'] from k:['%s'] line %d, ID=%u\n",
+			tran->t_shortname, tran->t_kfile, tran->t_linenum, tran->id);
+	    continue;
+	}
+
         while (( cmp = pathcasecmp( tran->t_pinfo.pi_name, file,
 		case_sensitive )) < 0 ) {
             transcript_parse( tran );
@@ -89,14 +106,195 @@ precedent_transcript( char *kfile, char *file, int where )
             }
         }
         if ( tran->t_eof ) {
+	    if (debug > 1)
+	    	fprintf (stderr, "*debug: file '%s' not found (EOF) in t:['%s'] from k:['%s'] ID=%u\n",
+			file, tran->t_shortname, tran->t_kfile, tran->id);
             continue;
         }
 
         if ( cmp > 0 ) {
+	    if (debug > 1)
+	    	fprintf (stderr, "*debug: file '%s' not found before in t:['%s'] from k:['%s'] line %d, ID=%u\n",
+			file, tran->t_shortname, tran->t_kfile, tran->t_linenum, tran->id);
             continue;
         }
 
         if ( cmp == 0 ) {
+	    int msg = 0;
+
+	    if (verbose) {
+	    	switch (tran->t_pinfo.pi_type) {
+		case 'f':
+	    	    if ((file_stat.st_size != tran->t_pinfo.pi_stat.st_size) || (debug)) {
+		        if (!msg)
+		    	    printf ("#  File: '%s' from t:['%s'] k:['%s'] line %d\n#\t",
+				file, tran->t_shortname, tran->t_kfile, tran->t_linenum);
+		        else
+		    	    printf (", ");
+
+		        msg++;
+		        printf ("size (%llu != %llu)", (unsigned long long) tran->t_pinfo.pi_stat.st_size, (unsigned long long) file_stat.st_size);
+		    }
+
+		    if ((file_stat.st_mtime != tran->t_pinfo.pi_stat.st_mtime) | (debug)) {
+		    	char file_time[64], tran_time[64];
+			struct tm tm;
+
+		        if (!msg)
+		    	    printf ("#  File: '%s' from t:['%s'] k:['%s'] line %d\n#\t",
+				file, tran->t_shortname, tran->t_kfile, tran->t_linenum);
+		        else
+		    	    printf (", ");
+
+		        msg++;
+			
+			localtime_r ( &(file_stat.st_mtime), &tm);
+			strftime (file_time, sizeof(file_time), "%Y-%m-%d %T", &tm);
+
+			memset ((void *)&tm, 0, sizeof(tm));
+
+			localtime_r ( &(tran->t_pinfo.pi_stat.st_mtime), &tm);
+			strftime (tran_time, sizeof(tran_time), "%Y-%m-%d %T", &tm);
+
+			printf ("mtime (%s != %s)", tran_time, file_time);
+		    }
+
+		    /* Fall through */
+
+		case 'P':
+		case 's':
+	        case 'd': 
+		    if ((file_stat.st_mode & ALLPERMS) != (tran->t_pinfo.pi_stat.st_mode & ALLPERMS)) {
+			if (!msg)
+		    	    printf ("#  File: '%s' from t:['%s'] k:['%s'] line %d\n#\t",
+				file, tran->t_shortname, tran->t_kfile, tran->t_linenum);
+		        else
+		    	    printf (", ");
+
+		        msg++;
+		        printf ("mode (%o != %o)", (tran->t_pinfo.pi_stat.st_mode & ALLPERMS), (file_stat.st_mode & ALLPERMS));
+		    }
+
+		    if (file_stat.st_uid != tran->t_pinfo.pi_stat.st_uid) {
+		        if (!msg)
+		    	    printf ("#  File: '%s' from t:['%s'] k:['%s'] line %d\n#\t",
+				file, tran->t_shortname, tran->t_kfile, tran->t_linenum);
+		        else
+		    	    printf (", ");
+
+		        msg++;
+		        printf ("uid (%lu != %lu)", tran->t_pinfo.pi_stat.st_uid, file_stat.st_uid);
+		    }
+
+		    if (file_stat.st_gid != tran->t_pinfo.pi_stat.st_gid) {
+		        if (!msg)
+		    	    printf ("#  File: '%s' from t:['%s'] k:['%s'] line %d\n#\t",
+				file, tran->t_shortname, tran->t_kfile, tran->t_linenum);
+		        else
+		    	    printf (", ");
+
+		        msg++;
+		
+			printf ("gid (%lu != %lu)", tran->t_pinfo.pi_stat.st_gid, file_stat.st_gid);
+		    }
+
+		    break;
+
+		default:
+		    break;
+		} /* switch ... */
+
+		if (msg)
+		    printf ("\n");
+
+	    }
+	    else if (debug)
+	    {
+	    	switch (tran->t_pinfo.pi_type) {
+		case 'f':
+	    	    if ((file_stat.st_size != tran->t_pinfo.pi_stat.st_size)  || (debug > 1)){
+		        if (!msg)
+		    	    fprintf (stderr, "*debug: File: '%s' from t:['%s'] k:['%s'] line %d\n*debug: ",
+				file, tran->t_shortname, tran->t_kfile, tran->t_linenum);
+		        else
+		    	    fprintf (stderr, ", ");
+
+		        msg++;
+		        fprintf (stderr ,"size (%llu != %llu)", (unsigned long long) tran->t_pinfo.pi_stat.st_size, (unsigned long long) file_stat.st_size);
+		    }
+
+		    if ((file_stat.st_mtime != tran->t_pinfo.pi_stat.st_mtime) || (debug > 1)) {
+		    	char file_time[64], tran_time[64];
+			struct tm tm;
+
+		        if (!msg)
+		    	    fprintf (stderr, "*debug: File: '%s' from t:['%s'] k:['%s'] line %d\n#\t",
+				file, tran->t_shortname, tran->t_kfile, tran->t_linenum);
+		        else
+		    	    fprintf (stderr, ", ");
+
+		        msg++;
+			
+			localtime_r ( &(file_stat.st_mtime), &tm);
+			strftime (file_time, sizeof(file_time), "%Y-%m-%d %T", &tm);
+
+			memset ((void *)&tm, 0, sizeof(tm));
+
+			localtime_r ( &(tran->t_pinfo.pi_stat.st_mtime), &tm);
+			strftime (tran_time, sizeof(tran_time), "%Y-%m-%d %T", &tm);
+
+			fprintf (stderr, "mtime (%s != %s)", tran_time, file_time);
+		    }
+
+
+		    /* Fall through */
+		case 'P':
+		case 'd':
+		case 's':
+		    if (((file_stat.st_mode & ALLPERMS) != (tran->t_pinfo.pi_stat.st_mode & ALLPERMS)) || (debug > 1)) {
+		        if (!msg)
+		    	    fprintf (stderr, "*debug: File: '%s' from t:['%s'] k:['%s'] line %d\n*debug: ",
+				file, tran->t_shortname, tran->t_kfile, tran->t_linenum);
+		        else
+		    	    fprintf (stderr, ", ");
+
+		        msg++;
+		        fprintf (stderr, "mode (%o != %o)", (tran->t_pinfo.pi_stat.st_mode & ALLPERMS), (file_stat.st_mode & ALLPERMS));
+   		    }
+
+		    if ((file_stat.st_uid != tran->t_pinfo.pi_stat.st_uid) || (debug > 1)) {
+		        if (!msg)
+		    	    fprintf (stderr, "*debug: File: '%s' from t:['%s'] k:['%s'] line %d\n*debug: ",
+				file, tran->t_shortname, tran->t_kfile, tran->t_linenum);
+		        else
+		    	    fprintf (stderr, ", ");
+
+		        msg++;
+		        fprintf (stderr, "uid (%lu != %lu)", tran->t_pinfo.pi_stat.st_uid, file_stat.st_uid);
+		    }
+
+		    if ((file_stat.st_gid != tran->t_pinfo.pi_stat.st_gid) || (debug > 1)) {
+		        if (!msg)
+		    	    fprintf (stderr, "*debug: File: '%s' from t:['%s'] k:['%s'] line %d\n*debug: ",
+				file, tran->t_shortname, tran->t_kfile, tran->t_linenum);
+		        else
+		    	    fprintf (stderr, ", ");
+
+		        msg++;
+		        fprintf (stderr, "gid (%lu != %lu)", tran->t_pinfo.pi_stat.st_gid, file_stat.st_gid);
+		    }
+		    break;
+
+		default:
+		    fprintf (stderr, "*debug: pi_type='%c'\n", tran->t_pinfo.pi_type);
+		     break;
+		} /* switch */
+
+		if (msg)
+		    fprintf (stderr, "\n");
+
+	    }
+
 	    return( tran );
 	}	
     }
@@ -147,7 +345,7 @@ main( int argc, char **argv, char **envp )
     diffargv[ diffargc++ ] = diff;
 
     while (( c = getopt ( argc, argv,
-	    "h:IK:p:P:rST:u:Vvw:x:y:z:Z:bitcefnC:D:sX:" )) != EOF ) {
+	    "h:IK:p:P:rST:u:Vvw:x:y:z:Z:bitcdefnC:D:sX:" )) != EOF ) {
 	switch( c ) {
 	case 'I':
 	    case_sensitive = 0;
@@ -232,6 +430,11 @@ main( int argc, char **argv, char **envp )
             exit( 1 );
 #endif /* HAVE_ZLIB */
 
+	case 'd':
+	    debug++;
+	    break;
+
+
 	/* diff options */
 	case 'b': case 'i': case 't':
 	case 'c': case 'e': case 'f': case 'n':
@@ -249,6 +452,10 @@ main( int argc, char **argv, char **envp )
 		perror( "strdup" );
 		exit( 2 );
 	    };
+	    if (debug)
+		fprintf (stderr, "*debug: diffargc = %d, diffargc[%d] = '%s'\n", diffargc,
+			diffargc, diffargv[diffargc-1]);
+
 	    break;
 
 	case 'C':
@@ -268,6 +475,11 @@ main( int argc, char **argv, char **envp )
 		exit( 2 );
 	    };
 	    diffargv[ diffargc++ ] = optarg;
+
+	    if (debug)
+		fprintf (stderr, "*debug: diffargc = %d, diffargc[%d] = '%s'\n", diffargc,
+			diffargc, diffargv[diffargc-1]);
+
 	    break;
 
 	case 'X':
@@ -281,6 +493,11 @@ main( int argc, char **argv, char **envp )
 	    }
 	    for ( i = 0; i < tac; i++ ) {
 		diffargv[ diffargc++ ] = argcargv[ i ];
+
+	        if (debug)
+		    fprintf (stderr, "*debug: diffargc = %d, diffargc[%d] = '%s'\n", diffargc,
+			diffargc, diffargv[diffargc-1]);
+
 	    }
 	    break;
 
@@ -306,6 +523,11 @@ main( int argc, char **argv, char **envp )
 		}
 		exit( 2 );
 	    }
+
+	    if (debug)
+	    	fprintf(stderr, "*debug: Found '%s' in t:['%s'] from k:['%s'] line %d, ID=%u\n",
+			file, tran->t_shortname, tran->t_kfile, tran->t_linenum, tran->id);
+
 	    /* check for special */
 	    if ( strcmp( tran->t_shortname, "special.T" ) == 0 ) {
 		special = 1;
@@ -323,7 +545,7 @@ main( int argc, char **argv, char **envp )
 
     if ( err || ( argc - optind != 1 )) {
 	fprintf( stderr, "usage: %s ", argv[ 0 ] );
-	fprintf( stderr, "[ -IrvV ] " );
+	fprintf( stderr, "[ -IrvVd ] " );
 	fprintf( stderr, "[ -T transcript | -S ] " );
 	fprintf( stderr, "[ -h host ] [ -p port ] [ -P ca-pem-directory ] " );
 	fprintf( stderr, "[ -u umask ] " );
@@ -422,23 +644,52 @@ main( int argc, char **argv, char **envp )
 	perror( temppath );
 	exit( 2 );
     } 
-    if ( unlink( temppath ) != 0 ) {
-	perror( temppath );
-	exit( 2 );
+
+    if (debug == 0) {
+        if ( unlink( temppath ) != 0 ) {
+	    perror( temppath );
+	    exit( 2 );
+        }
+        if ( dup2( fd, 0 ) < 0 ) {
+	    perror( temppath );
+	    exit( 2 );
+        }
+        if (( diffargv = (char **)realloc( diffargv, ( sizeof( *diffargv )
+	        + ( 4 * sizeof( char * ))))) == NULL ) {
+            perror( "malloc" );
+	    exit( 2 );
+        }
+        diffargv[ diffargc++ ] = "--";
+        diffargv[ diffargc++ ] = "-";
+        diffargv[ diffargc++ ] = file; 
+        diffargv[ diffargc++ ] = NULL;
     }
-    if ( dup2( fd, 0 ) < 0 ) {
-	perror( temppath );
-	exit( 2 );
+    else {
+        if (( diffargv = (char **)realloc( diffargv, ( sizeof( *diffargv )
+	        + ( 4 * sizeof( char * ))))) == NULL ) {
+            perror( "malloc" );
+	    exit( 2 );
+        }
+        diffargv[ diffargc++ ] = "--";
+        diffargv[ diffargc++ ] = temppath;
+        diffargv[ diffargc++ ] = file; 
+        diffargv[ diffargc++ ] = NULL;
     }
-    if (( diffargv = (char **)realloc( diffargv, ( sizeof( *diffargv )
-	    + ( 4 * sizeof( char * ))))) == NULL ) {
-	perror( "malloc" );
-	exit( 2 );
-    }
-    diffargv[ diffargc++ ] = "--";
-    diffargv[ diffargc++ ] = "-";
-    diffargv[ diffargc++ ] = file; 
-    diffargv[ diffargc++ ] = NULL;
+
+    if (debug) {
+    	int c;
+
+    	fprintf (stderr, "*debug: execve ('%s', [", diff);
+
+	for (c = 0; (c < diffargc) && (diffargv[c] != NULL); c++) {
+	    if (c > 0)
+	    	fprintf (stderr, ", ");
+
+	    fprintf (stderr, "'%s'", diffargv[c]);
+	}
+
+	fprintf (stderr, "], envp=%p)\n", envp);
+    } /* if (debug) */
 
     execve( diff, diffargv, envp );
 

@@ -41,10 +41,21 @@ twhich( char *pattern, int displayall )
     extern struct list	*exclude_list;
     int			cmp = 0, match = 0;
 
+    if (debug)
+        fprintf (stderr, "*debug: twhich ('%s', displayall=%d)\n", pattern, displayall);
+
     /* check exclude list */
     if ( exclude_list->l_count > 0 ) {
+    	if (debug > 2)
+	    fprintf (stderr, "*debug: exclude_list->l_count=%d\n", exclude_list->l_count);
+
 	for ( node = list_pop_head( exclude_list ); node != NULL;
 		node = list_pop_head( exclude_list )) {
+
+	    if (debug > 1)
+	    	 fprintf (stderr, "*debug: exclude_list ... node->n_path='%s', pattern='%s', case_sensitive=%d)\n",
+		 	node->n_path, pattern, case_sensitive);
+
 	    if ( wildcard( node->n_path, pattern, case_sensitive )) {
 		printf( "# Exclude\n" );
 		printf( "# exclude pattern: %s\n", node->n_path );
@@ -60,6 +71,9 @@ twhich( char *pattern, int displayall )
 
 	/* Skip NULL/empty transcripts */
 	if ( tran->t_eof ) {
+	    if (debug)
+	    	fprintf (stderr, "*debug: empty transcript t:['%s'] from k:['%s'] line %d\n",
+			tran->t_shortname, tran->t_kfile, tran->t_linenum);
 	    continue;
 	}
 
@@ -71,10 +85,16 @@ twhich( char *pattern, int displayall )
 	    }
 	}
 	if ( tran->t_eof ) {
+	    if (debug)
+	    	fprintf (stderr, "*debug: pattern '%s' not found (EOF) in t:['%s'] from k:['%s']\n",
+			pattern, tran->t_shortname, tran->t_kfile);
 	    continue;
 	}
 
 	if ( cmp > 0 ) {
+	    if (debug)
+	    	fprintf (stderr, "*debug: pattern '%s' not found before in t:['%s'] from k:['%s'] line %d\n",
+			pattern, tran->t_shortname, tran->t_kfile, tran->t_linenum);
 	    continue;
 	}
 
@@ -129,10 +149,14 @@ main( int argc, char **argv )
     char		*kfile = _RADMIND_COMMANDFILE;
     char		*pattern, *p;
 
-    while (( c = getopt( argc, argv, "aIK:rsV" )) != EOF ) {
+    while (( c = getopt( argc, argv, "adIK:rsV" )) != EOF ) {
 	switch( c ) {
 	case 'a':
 	    displayall = 1;
+	    break;
+
+	case 'd':
+	    debug++;
 	    break;
 
 	case 'K':
@@ -211,6 +235,9 @@ main( int argc, char **argv )
     outtran = stdout;
 
     if ( recursive ) {
+    	if (debug)
+	    fprintf(stderr, "*debug: recursive search - pattern='%s'\n", pattern);
+
 	for ( p = pattern; *p == '/'; p++ )
 	    ;
 	for ( p = strchr( p, '/' ); p != NULL; p = strchr( p, '/' )) {
