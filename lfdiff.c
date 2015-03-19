@@ -57,11 +57,11 @@ SSL_CTX  		*ctx;
 
 extern char             *caFile, *caDir, *cert, *privatekey;
 
-static void verbose_transcript_header (const char *file, const struct transcript *tran, int *p_msg);
-static void debug_transcript_header (FILE *out, const char *file, const struct transcript *tran, int *p_msg);
+static void verbose_transcript_header (const unsigned char *file, const struct transcript *tran, int *p_msg);
+static void debug_transcript_header (FILE *out, const unsigned char *file, const struct transcript *tran, int *p_msg);
 
    static void
-verbose_transcript_header  (const char *file, const struct transcript *tran, int *p_msg)
+verbose_transcript_header  (const unsigned char *file, const struct transcript *tran, int *p_msg)
 {
   if (p_msg == (int *) NULL)
     return;
@@ -79,7 +79,7 @@ verbose_transcript_header  (const char *file, const struct transcript *tran, int
 
 
    static void
-debug_transcript_header  (FILE *out, const char *file, const struct transcript *tran, int *p_msg)
+debug_transcript_header  (FILE *out, const unsigned char *file, const struct transcript *tran, int *p_msg)
 {
   if (p_msg == (int *) NULL)
     return;
@@ -169,13 +169,14 @@ precedent_transcript(const unsigned char *kfile, const unsigned char *file, int 
 	    if (verbose) {
 	    	switch (tran->t_pinfo.pi_type) {
 		case 'f':
-	    	    if ((file_stat.st_size != tran->t_pinfo.pi_stat.st_size) || (debug)) {
+	    	    if ((file_stat.st_size != tran->t_pinfo.pi_stat.st_size) || (debug > 1)) {
 		        verbose_transcript_header (file, tran, &msg);
-		        printf ("size (%llu != %llu)", (unsigned long long) tran->t_pinfo.pi_stat.st_size,
+		        printf ("size (%llu %s= %llu)", (unsigned long long) tran->t_pinfo.pi_stat.st_size,
+				tran->t_pinfo.pi_stat.st_size == file_stat.st_size ? "=" : "!",
 				(unsigned long long) file_stat.st_size);
 		    }
 
-		    if ((file_stat.st_mtime != tran->t_pinfo.pi_stat.st_mtime) | (debug)) {
+		    if ((file_stat.st_mtime != tran->t_pinfo.pi_stat.st_mtime) | (debug > 1)) {
 		    	char file_time[64], tran_time[64];
 			struct tm tm;
 
@@ -189,7 +190,9 @@ precedent_transcript(const unsigned char *kfile, const unsigned char *file, int 
 			localtime_r ( &(tran->t_pinfo.pi_stat.st_mtime), &tm);
 			strftime (tran_time, sizeof(tran_time), "%Y-%m-%d %T", &tm);
 
-			printf ("mtime (%s != %s)", tran_time, file_time);
+			printf ("mtime (%s %s= %s)", tran_time,
+				tran->t_pinfo.pi_stat.st_mtime == file_stat.st_mtime ? "=" : "!",
+				file_time);
 		    }
 
 		    /* Fall through */
@@ -197,24 +200,28 @@ precedent_transcript(const unsigned char *kfile, const unsigned char *file, int 
 		case 'P':
 		case 's':
 	        case 'd': 
-		    if ((file_stat.st_mode & ALLPERMS) != (tran->t_pinfo.pi_stat.st_mode & ALLPERMS)) {
+		   if (((file_stat.st_mode & ALLPERMS) != (tran->t_pinfo.pi_stat.st_mode & ALLPERMS)) | (debug > 1)) {
 		        verbose_transcript_header (file, tran, &msg);
 
-		        printf ("mode (%o != %o)", (tran->t_pinfo.pi_stat.st_mode & ALLPERMS),
+		        printf ("mode (%o %s= %o)", (tran->t_pinfo.pi_stat.st_mode & ALLPERMS),
+				(tran->t_pinfo.pi_stat.st_mode & ALLPERMS) == (file_stat.st_mode & ALLPERMS) ? "=" : "!",
 				(file_stat.st_mode & ALLPERMS));
-		    }
-
-		    if (file_stat.st_uid != tran->t_pinfo.pi_stat.st_uid) {
+		   }
+		
+		   if ((file_stat.st_uid != tran->t_pinfo.pi_stat.st_uid) | (debug > 1)) {
 		        verbose_transcript_header (file, tran, &msg);
 
-		        printf ("uid (%lu != %lu)", (long unsigned) tran->t_pinfo.pi_stat.st_uid,
+		        printf ("uid (%lu %s= %lu)", (long unsigned) tran->t_pinfo.pi_stat.st_uid,
+				tran->t_pinfo.pi_stat.st_uid == file_stat.st_uid ? "=" : "!",
 				(long unsigned) file_stat.st_uid);
 		    }
 
-		    if (file_stat.st_gid != tran->t_pinfo.pi_stat.st_gid) {
+		    if ((file_stat.st_gid != tran->t_pinfo.pi_stat.st_gid) | (debug > 1)) {
 		        verbose_transcript_header (file, tran, &msg);
 
-			printf ("gid (%lu != %lu)", tran->t_pinfo.pi_stat.st_gid, file_stat.st_gid);
+			printf ("gid (%lu %s= %lu)", tran->t_pinfo.pi_stat.st_gid,
+				tran->t_pinfo.pi_stat.st_gid == file_stat.st_gid ? "=" : "!",
+				file_stat.st_gid );
 		    }
 
 		    break;
@@ -234,8 +241,9 @@ precedent_transcript(const unsigned char *kfile, const unsigned char *file, int 
 	    	    if ((file_stat.st_size != tran->t_pinfo.pi_stat.st_size)  || (debug > 1)){
 		        debug_transcript_header (stderr, file, tran, &msg);
 
-		        fprintf (stderr ,"size (%llu != %llu)", 
+		        fprintf (stderr ,"size (%llu %s= %llu)", 
 				 (unsigned long long) tran->t_pinfo.pi_stat.st_size,
+				 tran->t_pinfo.pi_stat.st_size == file_stat.st_size ? "=" : "!",
 				 (unsigned long long) file_stat.st_size);
 		    }
 
@@ -253,7 +261,9 @@ precedent_transcript(const unsigned char *kfile, const unsigned char *file, int 
 			localtime_r ( &(tran->t_pinfo.pi_stat.st_mtime), &tm);
 			strftime (tran_time, sizeof(tran_time), "%Y-%m-%d %T", &tm);
 
-			fprintf (stderr, "mtime (%s != %s)", tran_time, file_time);
+			fprintf (stderr, "mtime (%s %s= %s)", tran_time, 
+				 tran->t_pinfo.pi_stat.st_mtime == file_stat.st_mtime ? "=" : "!",
+				 file_time);
 		    }
 
 
@@ -264,21 +274,24 @@ precedent_transcript(const unsigned char *kfile, const unsigned char *file, int 
 		    if (((file_stat.st_mode & ALLPERMS) != (tran->t_pinfo.pi_stat.st_mode & ALLPERMS)) || (debug > 1)) {
 		        debug_transcript_header (stderr, file, tran, &msg);
 
-		        fprintf (stderr, "mode (%o != %o)", (tran->t_pinfo.pi_stat.st_mode & ALLPERMS),
-				 (file_stat.st_mode & ALLPERMS));
+		        fprintf (stderr, "mode (%o %s= %o)", (tran->t_pinfo.pi_stat.st_mode & ALLPERMS),
+				 (tran->t_pinfo.pi_stat.st_mode & ALLPERMS) == (file_stat.st_mode & ALLPERMS) ? "=" : "!",
+				 (file_stat.st_mode & ALLPERMS) );
    		    }
 
 		    if ((file_stat.st_uid != tran->t_pinfo.pi_stat.st_uid) || (debug > 1)) {
 		        debug_transcript_header (stderr, file, tran, &msg);
 
-		        fprintf (stderr, "uid (%lu != %lu)", (unsigned long) tran->t_pinfo.pi_stat.st_uid,
+		        fprintf (stderr, "uid (%lu %s= %lu)", (unsigned long) tran->t_pinfo.pi_stat.st_uid,
+				 tran->t_pinfo.pi_stat.st_uid == file_stat.st_uid ? "=" : "!",
 				 (unsigned long) file_stat.st_uid);
 		    }
 
 		    if ((file_stat.st_gid != tran->t_pinfo.pi_stat.st_gid) || (debug > 1)) {
 		        debug_transcript_header (stderr, file, tran, &msg);
 
-		        fprintf (stderr, "gid (%lu != %lu)", (unsigned long) tran->t_pinfo.pi_stat.st_gid, 
+		        fprintf (stderr, "gid (%lu %s= %lu)", (unsigned long) tran->t_pinfo.pi_stat.st_gid, 
+				 tran->t_pinfo.pi_stat.st_gid == file_stat.st_gid ? "=" : "!",
 				 (unsigned long) file_stat.st_gid);
 		    }
 		    break;
@@ -787,6 +800,17 @@ main( int argc, char **argv, char **envp )
 	exit( 2 );
     } 
 
+    /*
+     * Add 4 more arguments to 'diff' in execve() arguments...
+     */
+    if (( diffargv = (char **)realloc( diffargv, (diffargc + 4) *
+				       sizeof( char *))) == NULL ) {
+        perror( "malloc" );
+	exit( 2 );
+    }
+    diffargv[ diffargc++ ] = "--";
+
+    /* Variations based on debugging. */
     if (debug == 0) {
         if ( unlink( (char *) temppath ) != 0 ) {
 	    perror( (char *) temppath );
@@ -796,30 +820,24 @@ main( int argc, char **argv, char **envp )
 	    perror( (char *) temppath );
 	    exit( 2 );
         }
-        if (( diffargv = (char **)realloc( diffargv, ( sizeof( *diffargv )
-	        + ( 4 * sizeof( char * ))))) == NULL ) {
-            perror( "malloc" );
-	    exit( 2 );
-        }
-        diffargv[ diffargc++ ] = "--";
-        diffargv[ diffargc++ ] = "-";
-        diffargv[ diffargc++ ] = (char *) file; 
-        diffargv[ diffargc++ ] = NULL;
+        diffargv[ diffargc++ ] = "-";  /* File descriptor input */
     }
     else {
-        if (( diffargv = (char **)realloc( diffargv, ( sizeof( *diffargv )
-	        + ( 4 * sizeof( char * ))))) == NULL ) {
-            perror( "malloc" );
-	    exit( 2 );
-        }
-        diffargv[ diffargc++ ] = "--";
         diffargv[ diffargc++ ] = (char *) temppath;
-        diffargv[ diffargc++ ] = (char *) file; 
-        diffargv[ diffargc++ ] = NULL;
     }
+
+    /*
+     * Finish execve() arguments.
+     */
+    diffargv[ diffargc++ ] = (char *) file; 
+    diffargv[ diffargc++ ] = NULL;
+
 
     if (debug) {
     	int c;
+
+	fprintf (stderr, "*debug: Note: Temporary file '%s' not removed.\n",
+		 temppath);
 
     	fprintf (stderr, "*debug: execve ('%s', [", diff);
 
