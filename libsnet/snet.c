@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1995,2001 Regents of The University of Michigan.
+ * Copyright (c) 1995, 2001, 2013 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -53,7 +53,7 @@
 
 static ssize_t snet_read0 ___P(( SNET *, char *, size_t, struct timeval * ));
 static ssize_t snet_read1 ___P(( SNET *, char *, size_t, struct timeval * ));
-static ssize_t snet_write0 ___P(( SNET *, char *, size_t, struct timeval * ));
+static ssize_t snet_write0 ___P(( SNET *sn, const char *buf, size_t len, struct timeval * tv));
 
 /*
  * This routine is necessary, since snet_getline() doesn't differentiate
@@ -98,10 +98,7 @@ snet_attach( fd, max )
 }
 
     SNET *
-snet_open( path, flags, mode, max )
-    char	*path;
-    int		flags;
-    int		mode;
+snet_open(const char *path, int flags, int mode, int max )
 {
     int		fd;
 
@@ -216,7 +213,7 @@ snet_setsasl( sn, conn )
  */
     ssize_t
 #ifdef __STDC__
-snet_writeftv( SNET *sn, struct timeval *tv, char *format, ... )
+snet_writeftv( SNET *sn, struct timeval *tv, const char *format, ... )
 #else /* __STDC__ */
 snet_writeftv( sn, tv, format, va_alist )
     SNET		*sn;
@@ -504,11 +501,7 @@ snet_select( int nfds, fd_set *rfds, fd_set *wfds, fd_set *efds,
 }
 
     static ssize_t
-snet_write0( sn, buf, len, tv )
-    SNET		*sn;
-    char		*buf;
-    size_t		len;
-    struct timeval	*tv;
+snet_write0( SNET *sn, const char *buf, size_t len, struct timeval *tv )
 {
     fd_set		fds;
     int			rc, oflags;
@@ -737,11 +730,7 @@ snet_read0( sn, buf, len, tv )
 }
 
     ssize_t
-snet_write( sn, buf, len, tv )
-    SNET		*sn;
-    char		*buf;
-    size_t		len;
-    struct timeval	*tv;
+snet_write( SNET *sn, const char *buf, size_t len, struct timeval *tv )
 {
 #ifdef HAVE_ZLIB
     char		cobuf[ 8192 ];
@@ -1049,7 +1038,7 @@ snet_getline( sn, tv )
     char * 
 snet_getline_multi( sn, logger, tv )
     SNET		*sn;
-    void		(*logger)( char * );
+    void		(*logger)( const char * );
     struct timeval	*tv;
 {
     char		*line; 
