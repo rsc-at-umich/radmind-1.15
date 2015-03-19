@@ -1,0 +1,145 @@
+.TH lmerge "1" "December 12, 2010" "RSUG" "User Commands"
+.SH NAME
+.B lmerge 
+\- lmerge combines multiple transcripts into one.
+.SH SYNOPSIS
+.B lmerge
+.RB [ \-CIiVvT ]
+[
+.BI \-D\  path
+] [
+.BI \-u\  umask 
+]
+.IR transcript ...
+.I dest 
+.br
+.B lmerge 
+.B \-f
+.RB [ \-IiVv ]
+[
+.BI \-D\  path
+] [
+.BI \-u\  umask
+]
+.I transcript1 transcript2 
+.br
+.B lmerge 
+.B \-n
+.RB [ \-IiVvT ]
+[
+.BI \-D\  path
+] [
+.BI \-u\  umask
+]
+.I transcript1 transcript2 dest 
+.br
+.sp
+.SH DESCRIPTION
+.B lmerge
+walks through each transcript in precedence order ( highest precedence
+transcript listed first ) to create the apply-able transcript
+.IR dest .
+If multiple transcripts list the same file system object, the transcript
+line from the highest precedence transcript is written to
+.IR dest .
+
+Blank lines and comments ( lines starting with # ) are not written to
+.IR dest .
+
+With the \-f option
+.B lmerge
+does not create a new transcript and merges the first transcript into the
+second transcript.  The second transcript must be writable by the user. 
+Only two transcripts are allowed.
+
+If the highest precedence listing of a file system object is preceded with a
+\'-', the transcript line will not be written to
+.IR dest .
+
+Files listed in
+.I dest
+are linked from their original location to a file directory created by
+.BR lmerge .
+This directory is relative to the location of
+.IR dest .
+Since files are linked, all transcripts ( including
+.I dest
+) and files must be located on the same volume.
+
+The \-C options runs
+.B lmerge
+in copy mode. Files listed in
+.I dest
+are copied from their original locations and are not linked.
+
+Using the \-f option,
+.B lmerge
+links all files from the lowest precedence
+transcript.  If the transcript line for a file is preceded with a "-"
+it is also removed from the file directory associated with the lowest precedence
+transcript.
+
+The \-n option indicates that the highest precedence transcript has no
+associated file directory.  All files listed in the highest precedence
+transcript must be in the file directory associated with the lowest precedence
+transcript.  A transcript line in the highest precedence transcript written to
+.IR dest ,
+but files are linked from the lowest precedence transcript.  Only two
+transcripts can be merged with the \-n option.
+.SH OPTIONS
+.TP 19
+.B \-C
+enable copy mode.
+.TP 19
+.B \-f
+merge
+.B transcript1
+into
+.IR transcript2 .
+.TP 19
+.BI \-D\  path
+specifies the radmind working directory, by default _RADMIND_PATH
+.TP 19
+.BI \-I
+path comparisons are case-insensitive.
+.TP 19
+.B \-n
+merge two transcripts linking all files from the lowest precedence
+transcript.
+.TP 19
+.B \-T
+merge transcripts only. Do not perform file system linking.
+May not be used with the \-f option.
+.TP 19
+.BI \-u\  umask
+use
+.I umask
+as the file mode creation mask, default is users umask.
+.TP 19
+.B \-V
+displays the version of 
+.B lmerge 
+and exits.
+.TP 19
+.B \-v
+displays merge information to the standard output.
+.sp
+.SH EXIT STATUS
+The following exit values are returned:
+.TP 5
+0
+Merge successful.
+.TP 5
+>1
+An error occurred.
+.sp
+.SH SEE ALSO
+.BR fsdiff (1),
+.BR ktcheck (1),
+.BR lapply (1),
+.BR lcksum (1),
+.BR lcreate (1),
+.BR lfdiff (1),
+.BR lsort (1),
+.BR twhich (1),
+.BR radmind (8).

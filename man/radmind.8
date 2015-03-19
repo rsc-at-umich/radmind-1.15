@@ -1,0 +1,365 @@
+.TH radmind "8" "December 12, 2010" "RSUG" "System Manager's Manual"
+.SH NAME
+.B radmind
+\- Remote administration daemon
+.SH SYNOPSIS
+.B radmind
+[
+.B \-dBrUV
+] [
+.BI \-a\  bind-address
+] [
+.BI \-b\  backlog
+] [
+.BI \-C\  crl-pem-file-or-dir
+] [
+.BI \-D\  path
+] [
+.BI \-F\  syslog-facility
+] [
+.BI \-L\  syslog-level
+] [
+.BI \-m\  max-connections 
+] [
+.BI \-P\  ca-directory
+] [
+.BI \-p\  port
+] [
+.BI \-u\  umask 
+] [
+.BI \-w\  auth-level
+] [
+.BI \-x\  ca-pem-file
+] [
+.BI \-y\  cert-pem-file
+] [ 
+.BI \-z\  private-key-file
+] [
+.BI \-Z\  max-compression-level
+]
+.SH DESCRIPTION
+Radmind uses the radmind access protocol to communicate with radmind
+clients.
+.sp
+On startup, radmind changes directory to _RADMIND_PATH, creates
+command, file, special, tmp, tmp/file, tmp/transcript and
+transcript ( with permissions 0750 ) if they do not
+exist, and begins listening on the radmind port ( by default 6222 ) for
+incoming connections.
+With the
+-D option, radmind will use
+.I path
+as its working directory.
+Radmind forks a child for each connection.
+On receiving a SIGUSR1 signal, radmind will reread its TLS
+configuration.
+.sp
+The file config contains a list of known clients that
+can connect to radmind, one per line.  Each line contains the
+CN, domain name or IP address of the client and the client's
+command file.  The server checks each line of the config file, first
+checking to see if the connecting client's CN, domain name, and 
+finally IP address match in that order.  CNs and
+domain names are case insensitive.  If the optional third field begins
+with a '#', it is ignored and treated as an in-line comment.
+.sp
+Lines that are blank or begin with '#' are ignored. There are several
+supported wildcard patterns similar to shell globbing. '*'
+will match any string.  A number range can be given 
+by "<\c
+.IR min -\c
+.IR max >"
+where 
+.I min
+is the lower bound and
+.I max
+is the upper bound. '?' matches any single character. The square bracket
+character list, "[abcd]",
+will match any single character within the brackets. Comma-separated
+values contained in curly braces, "{riverrun,past,Eve}"
+will match the first whole string found. '\\'
+can be used to escape any character. 
+.sp
+A client is only given access to command files and transcripts
+listed in their base command file as determined by the config
+file.
+.sp
+_RADMIND_PATH/config can include other config files using the keyword
+"@include", which can be used in two ways. The first is a simple include
+of another file. If the path does not begin with a slash (/), the path is
+interpreted as being relative to _RADMIND_PATH. For example:
+.sp
+.br
+	@include configs/ldap-servers.config
+.br
+.sp
+which would cause every connecting client to be checked against the contents
+of _RADMIND_PATH/configs/ldap-servers.config. The @include keyword can also
+take an optional third argument, a wildcard pattern limiting which clients
+will read the included config file. For example:
+.sp
+.br
+	@include configs/kerberos-kdcs.config *.kerberos.example.edu
+.br
+.sp
+would cause only clients with FQDNs matching '*.kerberos.example.edu' to
+read the included file. The wildcard is checked, in order, against the
+client's certificate CN (if the client presents one), the client's
+fully-qualified domain name, and the client's IP address.
+.SH DIRECTORY STRUCTURE
+.TP 19
+.B command
+Stores command files.
+.TP 19
+.B transcripts 
+Stores transcripts.
+.TP 19
+.B file
+All files served from the radmind server are stored in the
+.B file
+directory.
+All files for a given transcript are stored in
+.BI file/ <transcript>
+where
+.I <transcript>
+is the name of the transcript.  A file is stored in
+.BI file/ <transcript>\c
+.RI / <path>
+where
+.I <path>
+is the file's path as listed in the transcript.
+.TP 19
+.B special
+All special files are stored in
+.BR special .
+The special files for a given host are stored in
+.BI special/ <key>
+where 
+.I <key>
+is the client's CN, fully qualified domain name or IP address as matched
+in the config file.  Individual special files are stored in
+.BI special/ <host>\c
+.RI / <path>
+where
+.I <path>
+is the path of the special file as listed in the client's
+command file.
+.TP 19
+.B tmp/file
+All files stored on the server using the STOR command are saved in
+.BR tmp/file .
+Files for a given transcript are stored in
+.BI tmp/transcript/ <transcript>
+.BI / <path>
+where
+.I <transcript> is the name of the transcript and
+.I <path> is the file's path
+as given in the STOR command.
+.TP 19
+.B tmp/transcript
+All transcripts stored on the server using the STOR command are saved in
+.BR tmp/transcript .
+.SH RADMIND ACCESS PROTOCOL
+Radmind currently supports the following Radmind Access Protocol ( RAP )
+requests:
+.TP 10
+QUIT
+terminate session
+.TP 10
+NOOP
+do nothing
+.TP 10
+HELP
+display helpful message
+.TP 10
+STAT
+stat a transcript, command or special file.  When statting a command file or
+transcript, the mode, UID and GID default to 0444, 0, and 0 respectively.  If
+no command file is specified, the server returns information on the base
+command file as indicated in the config file.
+.sp
+Status of a special file is determined by a single transcript line listed
+in a file named 
+special/<special-file-path>.T , where <special-file-path> is the full
+path to the special file.  If that does not exist, a listing for the file 
+in the
+.B transcript/special.T
+transcript in the transcript directory will be used.
+If neither of those exist, the defaults are returned.
+.TP 10
+RETR
+retrieve a file, transcript command or special file.  If 
+no command file is specified, the server returns the base
+command file as indicated in the config file.
+.TP 10
+STOR
+store a file or transcript.  If user authentication is
+enabled,
+this command is only valid after the client sends a successful LOGI.
+.TP 10
+STAR
+Start TLS.  If the server is run with an authorization level of 2, this
+command must be given before a client can send a STAT, RETR, or STOR.
+.TP 10
+LOGI
+Login user.  This command is only valid after TLS has been
+started. 
+.TP 10
+COMP
+start compression
+.TP 10
+REPO
+report a client status message. The daemon logs the message in the following format:
+.sp
+.RS 
+report HOSTNAME IP CN - EVENT MESSAGE...
+.sp
+First the string "report", followed by the client's hostname and
+IP address.  If the client authenticates to the server with a certificate,
+its common name will be listed next.  If the client does not present a
+certificate, a '-' will be listed.
+Next, a '-' is printed as a placeholder for a future
+field.  Finally, the event and message are logged as reported by the client.
+.SH OPTIONS
+.TP 19
+.BI \-a\  bind-address
+specifies the address on which the server should listen, e.g.
+127.0.0.1.  By default the server listens on all available interfaces
+(wildcard address).
+.TP 19
+.B \-B
+register daemon as a Bonjour service. Replaces deprecated
+.BR \-R
+option.
+.TP 19
+.BI \-b\  backlog
+Defines the maximum queue of pending connections to
+.BR listen (2),
+by default five.
+.TP 19
+.BI \-C\  crl-pem-file-or-dir
+specifies either a single PEM-formatted file containing the CRL(s) or
+a directory that contains the CRL(s).  Any CRLs in a directory must be
+in PEM format and the directory must have been processed with the
+openssl c_rehash utility. 
+.TP 19
+.BI \-D\  path
+specifies the radmind working directory, by default _RADMIND_PATH
+.TP 19
+.B \-d
+debug mode. Does not disassociate from controlling tty.
+.TP 19
+.BI \-F\  syslog-facility
+specifies to which syslog facility to log messages.
+.TP 19
+.B \-f
+run in foreground
+.TP 19
+.BI \-L\  syslog-level
+specifies at which syslog level to log messages.
+.TP 19
+.BI \-m\  max-connections 
+specifies the maximum number of simultaneous connections, by
+default _RADMIND_MAXCONNECTIONS.
+Value must be greater than or equal to 0 with 0 indicating no limit.
+.TP 19
+.BI \-p\  port 
+specifies the port of the radmind server, by default
+.BR 6222 .
+.TP 19
+.BI \-P\  ca-directory
+specifies a directory that contains certificates to be used when verifying a client.  Certificates must be in PEM format and the directory must have been
+processed with the openssl c_rehash utility.
+.TP 19
+.B \-r
+use random seed file $RANDFILE if that environment variable is set,
+$HOME/.rnd otherwise.  See
+.BR RAND_load_file (3o).
+.TP 19
+.BI \-u\  umask
+specifies the umask the server uses to write files to the disk, defaulting
+to the user's umask.
+.TP 19
+.B \-U
+Turn on PAM user authentication.  Requires auth-level > 0.
+.B radmind
+uses the PAM service name radmind.
+.TP 19
+.B \-V
+displays the version of 
+.B  radmind
+and exits.
+.TP 19
+.BI \-w\  auth-level
+TLS authorization level, by default _RADMIND_AUTHLEVEL.
+0 = no TLS, 1 = server verification, 2 = server and client verification,
+3 = server and client verification with crl checking, 4 = server and client
+verification with full-chain crl checking.
+.TP 19
+.BI \-x\  ca-pem-file
+Certificate authority's public certificate, by default _RADMIND_TLS_CA.
+The default is not used when -P is specified.
+.TP 19
+.BI \-y\  cert-pem-file
+Server's public certificate, by default _RADMIND_TLS_CERT.
+.TP 19
+.BI \-z\  private-key-file
+Server's private key, by default _RADMIND_TLS_CERT.
+.TP 19
+.BI \-Z\  max-compression-level
+Offer compression to clients.  If client requests compression, the server will
+compress all outbound data using using the lower value of
+max_compression_level or compression level set by client.
+max-compression-level can be between 0 and 9:
+1 gives best speed, 9 gives best compression, 0 gives no compression at
+all (the input data is simply copied a block at a time).
+.SH EXAMPLES
+The following example of _RADMIND_PATH/config defines four known clients,
+each using one of three different command files.  Also, any client that ends
+with ".lab.umich.edu" will get lab.K as its config file and clients
+in the IP range 212.12.243.1 through 212.12.243.50 will get solaris8.K as their 
+config file.  Note that numeric ranges ignore leading zeros.  Therefore the
+last line will match clients with hostnames of mac1.umich.edu, mac01.umich.edu,
+mac001.umich,edu, etc.
+.sp
+.RS
+.nf
+#
+# Client               command file	optional-comment
+#
+amber.umich.edu        apple.K		# mail server
+josh.umich.edu         apple.K
+ben.umich.edu          apple-test.K
+oreo.umich.edu         solaris8.K
+*.lab.umich.edu        lab.K
+212.12.243.<1-50>      solaris8.K
+mac<1-15>.umich.edu    apple.K
+.fi
+.RE
+.LP
+.SH FILES
+_RADMIND_PATH/config
+.SH SEE ALSO
+.BR fsdiff (1),
+.BR ktcheck (1),
+.BR lapply (1),
+.BR lcreate (1),
+.BR lcksum (1),
+.BR lfdiff (1),
+.BR lmerge (1),
+.BR lsort (1),
+.BR repo (1),
+.BR twhich (1),
+.BR pam.conf (4),
+.BR RAND_load_file (3o).
+.sp
+Also see the three
+.B Linux-PAM
+Guides, for
+.B System
+.BR administrators ,
+.B module
+.BR developers ,
+and
+.B application
+.BR developers .

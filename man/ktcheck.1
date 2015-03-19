@@ -1,0 +1,180 @@
+.TH ktcheck "1" "December 12, 2010" "RSUG" "User Commands"
+.SH NAME
+.B ktcheck 
+\- verify and download command file and transcripts
+.SH SYNOPSIS
+.B ktcheck 
+.RB [ \-CIinrV ]
+[
+.RB \-q\ |\ \-v
+] [
+.BI \-D\  path
+] [
+.BI \-e\  event
+] [
+.BI \-c\  checksum 
+] [
+.BI \-K\  command-file 
+] [
+.BI \-h\  host
+] [
+.BI \-p\  port 
+] [
+.BI \-P\  ca-pem-directory
+] [
+.BI \-w\  auth-level
+] [
+.BI \-x\  ca-pem-file
+] [
+.BI \-y\  cert-pem-file
+] [ 
+.BI \-z\  private-key-file
+] [
+.BI \-Z\  compression-level
+]
+.SH DESCRIPTION
+.B ktcheck 
+verifies a client's command file with the radmind server 
+.IR host .  
+The command file is downloaded from 
+.I host 
+if it is missing or has the wrong size.  With the -c option, checksums are
+also used to verify files. 
+
+Reading the command file line-by-line,
+.B ktcheck 
+verifies each command file and transcript listed, downloading it from 
+.I host 
+if it is missing or out of date.
+.B ktcheck
+ignors blank lines and comments ( lines starting with '#' ). 
+Included command files are read are verified using the same method.
+
+Each special file listed in the command file is converted into a
+transcript line in special.T with information provided by 
+.IR host .
+See
+.BR radmind (8)
+for details of the STAT command.
+
+If checksuming is turned on, the special transcript is verified using
+the checksum and file size.  If either are wrong, the special transcript
+is updated.
+If checksuming is 
+turned off, the special transcript is always updated.
+
+Files updated by
+.B ktcheck
+must be regular files and the user must have access to modify them.
+
+When run with the \-n option,
+.B ktcheck
+verifies but never downloads the command files or transcripts.  A temporary 
+special.T is created for verification and is removed on exit.
+.SH OPTIONS
+.TP 19
+.BI \-C
+clean
+.BR _RADMIND_DIR/client .
+.TP 19
+.BI \-c\  checksum
+enables checksuming.
+.TP 19
+.BI \-D\  path
+specifies the radmind working directory, by default
+.BR _RADMIND_PATH .
+.TP 19
+.BI \-e\  event
+the event type to report. This is limited to a single word, containing no
+white space. By default this is "ktcheck".
+.TP 19
+.BI \-I
+case-insensitive special.T, case-insensitive clean-up.
+.TP 19
+.BI \-i
+force output line buffering.
+.TP 19
+.BI \-h\  host
+specifies the radmind server, by default
+.BR _RADMIND_HOST .
+.TP 19
+.BI \-K\  command
+specifies a command file, by default
+.BR _RADMIND_COMMANDFILE .
+.TP 19
+.B \-n
+no files modified.
+.TP 19
+.BI \-p\  port
+specifies a port, by default
+.B 6222.
+.TP 19
+.BI \-P\  ca-pem-directory
+specifies a directory that contains certificates to be used when verifying the
+server.  Certificates must be in PEM format and the directory must have been
+processed with the openssl c_rehash utility.
+.TP 19
+.B \-q
+suppress all messages.
+.TP 19
+.B \-r
+use random seed file $RANDFILE if that environment variable is set,
+$HOME/.rnd otherwise.  See
+.BR RAND_load_file (3o).
+.TP 19
+.B \-V
+displays the version of 
+.BR ktcheck ,
+a list  of supported checksumming algorithms in descending
+order of preference and then exits.
+.TP 19
+.B \-v
+displays communication with the radmind server.
+.TP 19
+.BI \-w\  auth-level
+TLS authorization level, by default _RADMIND_AUTHLEVEL.
+0 = no TLS, 1 = server verification, 2 = server and client verification.
+.TP 19
+.BI \-x\  ca-pem-file
+Certificate authority's public certificate, by default _RADMIND_TLS_CA. 
+The default is not used when -P is specified.
+.TP 19
+.BI \-y\  cert-pem-file
+Client's public certificate, by default _RADMIND_TLS_CERT.
+.TP 19
+.BI \-z\  private-key-file
+Client's private key, by default _RADMIND_TLS_CERT.
+.TP 19
+.BI \-Z\  compression-level
+Compress all outbound data.  compression-level can be between 0 and 9:
+1 gives best speed, 9 gives best compression, 0 gives no compression at
+all (the input data is simply copied a block at a time).
+.SH FILES
+.TP 19
+.B _RADMIND_COMMANDFILE
+name of the default command file.
+.TP 19
+.B special.T 
+name of the special transcript.
+.SH EXIT STATUS
+The following exit values are returned:
+.TP 5
+0
+No differences were found. 
+.TP 5
+1
+Differences were found.
+.TP 5
+>1
+An error occurred.
+.SH SEE ALSO
+.BR fsdiff (1),
+.BR lapply (1),
+.BR lcksum (1),
+.BR lcreate (1),
+.BR lfdiff (1),
+.BR lmerge (1),
+.BR lsort (1),
+.BR twhich (1),
+.BR radmind (8),
+.BR RAND_load_file (3o).

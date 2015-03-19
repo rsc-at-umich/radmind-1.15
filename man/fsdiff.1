@@ -1,0 +1,342 @@
+.TH fsdiff "1" "December 12, 2010" "RSUG" "User Commands"
+.SH NAME
+.B fsdiff
+\- compare filesystem to transcripts
+.SH SYNOPSIS
+.B fsdiff
+{
+.B -C
+|
+.B -A
+|
+.B -1
+} [
+.BI -IVW
+] [
+.BI \-K\  command
+] [
+.BI \-c\  checksum
+] [
+.BI \-o\  file
+[
+.BI -%
+] ]
+.I path
+.sp
+.SH DESCRIPTION
+.B fsdiff
+reads a command file (the default name is
+.B command.K)
+to get a list of transcripts. If the command file is empty, the
+transcript list is considered to be the null transcript.  Included command files
+are read depth first.  The first
+transcript listed has the lowest precedence, the
+next higher, and the last has the highest.
+If any special files are
+listed, the
+.B special.T
+transcript will have the absolute highest precedence.
+.sp
+.B fsdiff
+walks the filesystem starting at
+.I path
+and compares the filesystem to the transcripts.  Trailing '/'s on
+.I path
+are clipped.
+.sp
+If a transcript is
+.B positive,
+.B fsdiff
+checks all attributes of each file system object
+( i.e. file, directory, link, etc ).
+If the -c option is given, checksums are also compared.
+If a transcript is
+.B negative,
+.B fsdiff
+checks only some of the attributes of the file system objects ( see
+TRANSCRIPTS section below ). 
+There is only one
+.B special
+transcript,
+.B special.T,
+and it contains references to files that are host specific, eg.
+/etc/hostname.hme0.
+.sp
+Any discrepancies are printed on the standard output or, with the -o option,
+to a file. The default is to print the differences as edits to the
+transcript to make it match the filesystem. If the edit direction
+chosen is -T or -A, the differences are printed as edits to the file system
+to make it match the transcript. A "+" at the beginning of a line
+indicates a file must be downloaded. A "-" indicates the given object (
+file, directory, link etc ) must be removed.
+.sp
+.SH TRANSCRIPTS 
+A transcript contains a list of filesystem objects, eg. directories,
+files, symbolic links etc. Transcripts have the following format:
+.sp
+.br
+	type path [type specific information]
+.br
+.sp
+Type is a single letter: h, l, d, c, b, p, s, D, f, a. Path is the encoded
+path, where space is "\\b", tab is "\\t", newline is "\\n", carriage return
+is "\\r", and 
+\\ is "\\\\". The type specific information varies.
+.sp
+.br
+	l path target
+.br
+	h path target
+.br
+.sp
+Type 'l' is a symbolic link and 'h' is a hard link.  Target is encoded like
+path.  If a symbolic link is listed in a negative transcript, the target
+is not checked.
+.sp
+.br
+	d path mode uid gid [ finder-information ]
+.br
+	D path mode uid gid
+.br
+	s path mode uid gid
+.br
+	p path mode uid gid
+.br
+.sp
+Type 'd' is a directory, 'D' is a door, 's' is a socket and 'p' is
+a named pipe. Mode is a 4 digit octal representation of the
+permissions.  ( see
+.BR chmod(1).
+) uid and gid are the user and group ids in decimal format.
+finder-information is used only on Mac OS X machines running on an
+HFS+ formatted drive to store directory finder information.  If a
+directory is listed in a
+.B negative
+transcript, mode, uid, gid and, if listed, finder-information will
+be checked, but the directory itself will not be read.
+.sp
+.br
+	b path mode uid gid major minor
+.br
+	c path mode uid gid major minor
+.br
+.sp
+Type 'b' is a block special file, 'c' is a character special file.
+Major and minor are the major and minor device numbers in decimal.
+If a character special file is listed in a
+.B negative
+transcript, only major and minor device number will be checked.
+.sp
+.br
+	f path mode uid gid mtime size checksum
+.br
+	a path mode uid gid mtime size checksum
+.br
+.sp
+Type 'f' is a reuglar file. Mtime is a decimal number of seconds since 1970 GMT.
+Size is the size of the file in bytes. Checksum is the base64 encoded
+checksum if enabled, otherwise it is "-". If a file is listed in a 
+.B negative
+transcript, only mode, uid and gid will be checked.
+.sp
+Type 'a' is an
+.B applefile,
+relevant only on Mac OS X machines running on an HFS+ formatted drive.
+An applefile 
+has Mac OS metadata, and is stored on the server as an AppleSingle file 
+(see applefile(5)).
+Everything that applies to
+a regular file applies to an applefile, as well.
+.sp
+Transcripts are sorted alphabetically, depth first, and case
+sensitively.  This means subdirectories have precedence over files
+in the same directory: lexically, "/" has highest precedence.  So
+the file:
+.sp
+	/etc/passwd
+.sp
+comes before:
+.sp
+	/etc.old
+.sp
+even though "." normally comes before "/", and:
+.sp
+	/Library
+.sp
+would come before:
+.sp
+	/dev
+.sp
+as capitalized characters are higher in precedence than
+lowercase ones.  Both of the previous two directories would come
+before:
+.sp
+	/etc.old
+.SH COMMAND FILES
+Command files have the following format:
+.br
+.sp
+	type	path
+.sp
+.br
+Type is 'k' for command file, 'p' for positive, 'n' for negative, 's'
+for special and 'x' for an exclude pattern. The
+argument path is either a command file name, transcript name,
+or in the case of type special, a full pathname.
+.br
+.br
+.sp
+	# example command file
+.br
+	k	linux-base.K
+.br
+	p	test/denser-10.T
+.br
+	p	simta-032.T
+.br
+	n	simta-neg.T
+.br
+	s	/etc/fstab
+.br
+	x	/etc/tsm*.pid
+.sp
+Lines beginning with "#" are comments, and are skipped. A comment must
+be on a line by itself. Blank lines are also skipped. Exclude lines are
+wildcard patterns (see radmind(8) DESCRIPTION) of paths that will
+be ignored completely, that is, fsdiff will not care if an object matching
+an exclude line is present or absent, and will not print out anything
+relating to it. Exclude patterns apply to objects on the filesystem and
+paths in transcripts. Only special files are unaffected by excludes. For
+help determining which files you are excluding, use the -W flag.
+.sp
+If there is no command file, the transcript used is the null transcript.
+This means
+.B fsdiff
+will print out a difference line for every object in the
+filesystem, eg. a filesystem snapshot. 
+.sp
+Positive and negative transcripts and special files can be removed from a command file by using minus lines.  These lines effectively remove all previously  referenced lines that match both the type and path of the minus line.  Minus lines begin with a '-', followed by some amount of whitespace.
+.sp
+Minus lines only apply to transcripts and special files that have already been read from a command file.  If a subsequent line or included command file lists the same transcript or special file, it will be once again included.
+.sp
+For example, if you wanted to remove the special file /etc/fstab from the previous example, you could use this command file:
+.br
+.br
+.sp
+	# example command file
+.br
+	k	linux-base.K
+.br
+	p	test/denser-10.T
+.br
+	p	simta-032.T
+.br
+	n	simta-neg.T
+.br
+	s	/etc/fstab
+.br
+	-  s	/etc/fstab
+.sp
+The minus line in this example would match the special file /etc/fstab, causing it to be effectively removed from the command file.
+.SH EXAMPLES
+In this example, fsdiff is used to generate a line for the negative
+transcript for /tmp.
+.sp
+.RS
+.nf	
+example% fsdiff -1 /tmp
+d /tmp               1777     0     3
+example%
+.fi
+.RE
+.sp
+A more complete negative transcript might look like this:
+.sp
+.RS
+.nf
+example% vi negative.T
+f /etc/passwd        0444     0     3 993477914     482 -
+d /proc              0555     0     0
+d /tmp               1777     0     3
+f /var/adm/lastlog   0444     0     1 993662219  976304 -
+f /var/adm/messages  0644     0     0 993661335   94910 -
+f /var/adm/sulog     0600     0     0 993662246     422 -
+f /var/adm/utmpx     0644     0     2 993662219    2604 -
+f /var/adm/wtmpx     0644     4     4 993662219  111600 -
+f /var/cron/log      0600     0     0 993627000    2694 -
+d /xfn               0555     0     0
+.fi
+.RE
+.sp
+.SH OPTIONS
+.TP 19
+.B \-%
+percentage done progress output. Requires -o option.
+.TP 19
+.B no option
+fsdiff defaults to -A.  Future releases will require an option explicitly.
+.TP 19
+.B \-1
+prints out a single transcript line for the given file. This option can be
+used to build 
+.B negative
+transcripts.
+.TP 19
+.B \-A
+produces an applicable transcript.
+.TP 19
+.B \-C
+produces a creatable transcript.
+.TP 19
+.BI \-c\  checksum
+enables checksuming.
+.TP 19
+.BI \-I
+be case insensitive when compairing paths.
+.TP 19
+.BI \-K\  command
+specifies a command
+file name, by default
+.B _RADMIND_COMMANDFILE
+.TP 19
+.BI \-o\  file
+specifies an output file, default is the standard output.
+.TP 19
+.B \-V
+displays the version number of 
+.BR fsdiff ,
+a list  of supported checksumming algorithms in descending
+order of preference and then exits.
+.TP 19
+.B \-W
+prints a warning to the standard error when encountering an object
+matching an exclude pattern.
+.sp
+.SH FILES
+.TP 19
+.B _RADMIND_COMMANDFILE
+name of the default command file.
+.TP 19
+.B special.T 
+name of the special transcript.
+.sp
+.SH EXIT STATUS 
+The following exit values are returned:
+.TP 5
+0
+No errors.
+.TP 5
+>1 
+An error occurred.
+.sp
+.SH SEE ALSO
+.BR ktcheck (1),
+.BR lapply (1),
+.BR lcksum (1),
+.BR lcreate (1),
+.BR lfdiff (1),
+.BR lmerge (1),
+.BR lsort (1),
+.BR twhich (1),
+.BR applefile (5),
+.BR radmind (8).

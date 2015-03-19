@@ -1,0 +1,154 @@
+.TH lfdiff "1" "December 12, 2010" "RSUG" "User Commands"
+.SH NAME
+.B lfdiff 
+\- compare local files with copies on radmind server
+.SH SYNOPSIS
+.B lfdiff 
+[
+.B \-IrvV
+] [
+.BI \-T\  transcript
+|
+.B \-S
+] [
+.BI \-h\  host 
+] [
+.BI \-p\  port
+] [
+.BI \-P\  ca-pem-directory
+] [
+.BI \-u\  umask
+] [
+.BI \-w\  auth-level
+] [
+.BI \-x\  ca-pem-file
+] [
+.BI \-y\  cert-pem-file
+] [ 
+.BI \-z\  private-key-file
+] [
+.BI \-Z\  compression-level
+] [
+.I supported\ diff\ options
+] [
+.B \-X
+.I unsupported\ diff\ options
+]
+.I file 
+.SH DESCRIPTION
+.B lfdiff 
+retrieves 
+.IR file ,
+given as an unencoded path,
+from the radmind server 
+.I host 
+and writes it to
+/tmp.
+.I file
+is then compared to the local copy of 
+.I file 
+using 
+.BR diff (1). 
+The server copy and the local copy of 
+.I file 
+are passed to 
+.BR diff (1)
+as file1
+and file2 arguments respectively.  
+.I file 
+is removed from /tmp on exit.
+.B lfdiff
+supports all single letter 
+.BR diff (1)
+options not duplicated in 
+.BR lfdiff .
+All other
+.BR diff (1) 
+options are given using the \-X option.
+.SH OPTIONS
+.TP 19
+.B \-I
+compare paths case-insensitively
+.TP 19
+.BI \-h\  host
+specifies the radmind server, by default
+.BR _RADMIND_HOST . 
+.TP 19
+.BI \-p\  port 
+specifies the port of the radmind server, by default
+.BR 6222 .
+.TP 19
+.BI \-P\  ca-pem-directory
+specifies a directory that contains certificates to be used when verifying the server.  Certificates must be in PEM format and the directory must have been
+processed with the openssl c_rehash utility. 
+.TP 19
+.B \-r
+use random seed file $RANDFILE if that environment variable is set,
+$HOME/.rnd otherwise.  See
+.BR RAND_load_file (3o).
+.TP 19
+.B \-S
+.I file
+is a special file.
+.TP 19
+.BI \-T\  transcript 
+transcript that 
+.I file 
+is listed in.
+.TP
+.BI \-u\  umask
+specifies the umask for temporary files, by default 0077
+.TP 19
+.B \-V
+displays the version of 
+.B lfdiff 
+and exits.
+.TP 19
+.BI \-v
+display communication with the radmind server.
+.TP 19
+.BI \-X\  unsupported\ diff\ options
+passes options directly to
+.BR diff (1). 
+.TP 19
+.BI \-w\  auth-level
+TLS authorization level, by default _RADMIND_AUTHLEVEL.
+0 = no TLS, 1 = server verification, 2 = server and client verification.
+.TP 19
+.BI \-x\  ca-pem-file
+Certificate authority's public certificate, by default _RADMIND_TLS_CA.
+.TP 19
+.BI \-y\  cert-pem-file
+Client's public certificate, by default _RADMIND_TLS_CERT.
+The default is not used when -P is specified.
+.TP 19
+.BI \-z\  private-key-file
+Client's private key, by default _RADMIND_TLS_CERT.
+.TP 19
+.BI \-Z\  compression-level
+Compress all outbound data.  compression-level can be between 0 and 9:
+1 gives best speed, 9 gives best compression, 0 gives no compression at
+all (the input data is simply copied a block at a time).
+.SH EXIT STATUS 
+The following exit values are returned:
+.TP 5
+0
+No differences were found.
+.TP 5
+1
+Differences were found.
+.TP 5
+>1
+An error occurred.
+.SH SEE ALSO
+.BR diff (1),
+.BR fsdiff (1),
+.BR ktcheck (1),
+.BR lapply (1),
+.BR lcksum (1),
+.BR lcreate (1),
+.BR lmerge (1),
+.BR lsort (1),
+.BR twhich (1),
+.BR radmind (8),
+.BR RAND_load_file (3o).
