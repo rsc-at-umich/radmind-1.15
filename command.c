@@ -110,7 +110,7 @@ int		max_zlib_level = 0;
 #endif /* HAVE_ZLIB */
 
 extern int	debug;
-
+extern int	verbose;
 extern int 	authlevel;
 extern int 	checkuser;
 
@@ -1257,11 +1257,18 @@ f_compress( SNET *sn, int ac, char **av )
     static char *
 match_config_entry( const unsigned char *entry )
 {
-  if (( remote_cn != NULL ) && wildcard( entry, (unsigned char *) remote_cn, 0 )) {
-	return( remote_cn );
-    } else if ( wildcard( entry, (unsigned char *) remote_host, 0 )) {
+    if (( remote_cn != NULL ) && wildcard( entry, (unsigned char *) remote_cn, 0 )) {
+        syslog( LOG_NOTICE, "Match '%s' by 'CN=%s'", entry, remote_cn);
+        return( remote_cn );
+    }
+
+    if ( wildcard( entry, (unsigned char *) remote_host, 0 )) {
+        syslog( LOG_NOTICE, "Match '%s' by [%s]->'%s'", entry, remote_addr, remote_host);
 	return( remote_host );
-  } else if ( wildcard( entry, (unsigned char *) remote_addr, 1 )) {
+    }
+
+    if ( wildcard( entry, (unsigned char *) remote_addr, 1 )) {
+        syslog( LOG_NOTICE, "Match '%s' by remote host '%s'", entry, remote_addr);
 	return( remote_addr );
     }
 

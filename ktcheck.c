@@ -621,7 +621,7 @@ static const usageopt_t main_usage[] =
 	      "Specify where 'ca.pem' can be found.", "pathname"},
 
     { (struct option) { "authentication",  required_argument, NULL, 'w' },
-	      "Specify the authentication level", "number" },
+	      "Specify the authentication level, default " STRINGIFY(_RADMIND_AUTHLEVEL), "number" },
 
     { (struct option) { "ca-file",       required_argument, NULL, 'x' },
 	      "Specify the certificate authority file", "pem-file" },

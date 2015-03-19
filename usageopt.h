@@ -19,6 +19,9 @@
 #  include <unistd.h>
 #  include <getopt.h>
 
+#  define STRINGIFY(s) _X_STRINGIFY(s)
+#  define _X_STRINGIFY(s) #s
+
 /* 
  * Local types
  */

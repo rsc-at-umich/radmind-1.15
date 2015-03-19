@@ -326,7 +326,7 @@ tls_client_start( SNET *sn, const char *host, int authlevel )
 	return( -1 );
     }
 
-    /* This code gratiously borrowed from openldap-2.2.17,
+    /* This code originally gratiously borrowed from openldap-2.2.17,
      * it allows the use of aliases in the certificate.
      */
     alt_ext = X509_get_ext_by_NID( peer, NID_subject_alt_name, -1 );

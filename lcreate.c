@@ -88,7 +88,6 @@ static const usageopt_t main_usage[] =
     { (struct option) { "checksum",     required_argument, NULL, 'c' },
       "specify checksum type",  "checksum-type: [sha1,etc]" },
 
-
     { (struct option) { "hostname",     required_argument, NULL, 'h' },
       "Radmind server hostname to contact, defaults to '" _RADMIND_HOST "'", "domain-name" },
 
@@ -132,6 +131,9 @@ static const usageopt_t main_usage[] =
 
     { (struct option) { "line-buffering", no_argument, NULL, 'i' },
 	      "Force line buffering", NULL},
+
+    { (struct option) { "authentication",  required_argument, NULL, 'w' },
+              "Specify the authentication level, default " STRINGIFY(_RADMIND_AUTHLEVEL), "number" },
 
     { (struct option) { "login", no_argument, NULL, 'l' },
 	      "Turn on user authentication.  Requires a TLS.", NULL},

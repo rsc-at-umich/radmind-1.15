@@ -385,8 +385,7 @@ static const usageopt_t main_usage[] =
 	      "specifies the umask for temporary files, by default 0077", "number" },
 
     { (struct option) { "authentication",  required_argument, NULL, 'w' },
-	      "Specify the authentication level", "number" },
-
+              "Specify the authentication level, default " STRINGIFY(_RADMIND_AUTHLEVEL), "number" },
 
     { (struct option) { "ignore-space-change", no_argument, NULL, 'b' },
 	      "(diff option -b)", NULL},
