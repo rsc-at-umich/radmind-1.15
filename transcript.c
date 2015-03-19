@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2007, 2013 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2007, 2013-2014 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -18,6 +18,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
+#include <sysexits.h>
 
 #include "applefile.h"
 #include "base64.h"
@@ -45,6 +46,7 @@ static struct list		*kfile_list;
 struct list			*special_list;
 struct list			*exclude_list;
 
+
 char				*path_prefix = NULL;
 int				edit_path;
 int				skip;
@@ -53,7 +55,8 @@ int				fs_minus;
 int				exclude_warnings = 0;
 FILE				*outtran;
 int			        debug = 0;
-size_t                          transcript_buffer_size = 0; /* No buffering */
+int				verbose = 0;	 /* For warning messages. */
+size_t                          transcript_buffer_size = DEFAULT_TRANSCRIPT_BUFFER_SIZE;  /* If 0, no buffering */
 unsigned int                    transcripts_buffered = 0;
 unsigned int                    transcripts_unbuffered = 0;
 
@@ -126,11 +129,13 @@ transcript_parse( transcript_t *tran )
 	  char *dummy = NULL;
 
 	  if ( *(tran->buffer_position) == '\0') {
-	    tran->t_eof = 1;
-	    if (debug > 2)
-		fprintf (stderr, "*debug: transcript_parse(t:['%s'] from k:['%s']) empty (buffer EOF after line %d, skipping %u)\n",
-			 tran->t_shortname, tran->t_kfile, tran->t_linenum, counted);
-	    return;
+	      tran->t_eof = 1;
+	      if (debug > 2)
+	          alert_transcript(NULL, stderr, tran,
+				   "transcript_parse() - empty (buffer EOF, skipping %u)",
+				   counted);
+
+	      return;
 	  }
 
 	  /* Use re-entrant version of strtok() */
@@ -143,17 +148,22 @@ transcript_parse( transcript_t *tran )
 	      strncpy (line, tran->buffer_position, sizeof(line)-1);
 	      tran->buffer_position += strlen (tran->buffer_position) + 1;
 	  }
-	  if (debug > 2)
-	    fprintf (stderr, "*debug: transcript_parse(t:['%s'] from k:['%s']) buffered line %u after skipping %u:\n\t%s\n",
-		     tran->t_shortname, tran->t_kfile, tran->t_linenum, counted, line);
+	  if (debug > 2) {
+	      alert_transcript (NULL, stderr, tran, 
+				"transcript_parse() - buffered line after skipping %u",
+				counted);
+	      fprintf(stderr, "*\t'%s'\n", line);
+	  }
 
 	  strncat (line, "\n", sizeof(line)-1);  /* Put EOL back. */
         }
 	else if (( fgets( line, sizeof(line)-1, tran->t_in )) == NULL ) {
 	    tran->t_eof = 1;
 	    if (debug > 2)
-		fprintf (stderr, "*debug: transcript_parse(t:['%s'] from k:['%s']) empty (EOF after line %d, skipping %u)\n",
-			 tran->t_shortname, tran->t_kfile, tran->t_linenum, counted);
+	        alert_transcript(NULL, stderr, tran, 
+				 "transcript_parse() - empty (EOF, skipping %u)",
+				 counted); 
+
 	    return;
 	}
 	tran->t_linenum++;
@@ -164,20 +174,20 @@ transcript_parse( transcript_t *tran )
 	if ( line[ length - 1 ] != '\n' ) {
 	    fprintf( stderr, "%s: line %d: line too long\n",
 		    tran->t_fullname, tran->t_linenum );
-	    exit( 2 );
+	    exit(EX_SOFTWARE);  /* from <sysexits.h> */
 	} 
     } while ((( ac = argcargv( line, &av )) == 0 ) || ( *av[ 0 ] == '#' ));
 
     if ( ac < 3 ) {
 	fprintf( stderr, "%s: line %d: minimum 3 arguments, got %d\n",
 		tran->t_fullname, tran->t_linenum, ac );
-	exit( 2 );
+	exit( EX_DATAERR ); /* from <sysexits.h> */
     }
 
     if ( strlen( av[ 0 ] ) != 1 ) {
 	fprintf( stderr, "%s: line %d: %s is too long to be a type\n",
 		tran->t_fullname, tran->t_linenum, av[ 0 ] );
-	exit( 2 );
+	exit( EX_DATAERR ); /* from <sysexits.h> */
     }
 
     if ( av[ 0 ][ 0 ] == '-' ) {
@@ -196,31 +206,28 @@ transcript_parse( transcript_t *tran )
     if (( epath = (filepath_t *) decode( av[ 1 ] )) == NULL ) {
 	fprintf( stderr, "%s: line %d: path too long\n",
 		 (const char *) tran->t_fullname, tran->t_linenum );
-	exit( 2 );
+	exit( EX_DATAERR ); /* from <sysexits.h> */
     }
 
     /* Convert path to match transcript type */
     if (( epath = convert_path_type( epath )) == NULL ) {;
 	fprintf( stderr, "%s: line %d: path too long\n",
 		 (const char *) tran->t_fullname,  tran->t_linenum );
-	exit( 2 );
+	exit( EX_DATAERR ); /* from <sysexits.h> */
     }
 
     if ( pathcasecmp( epath, tran->t_pinfo.pi_name, case_sensitive ) <= 0 ) {
 	fprintf( stderr, "%s: line %d: bad sort order\n",
 		 (const char *) tran->t_fullname, tran->t_linenum );
-	exit( 2 );
+	exit( EX_DATAERR ); /* from <sysexits.h> */
     }
 
     filepath_ncpy( tran->t_pinfo.pi_name, epath, sizeof(tran->t_pinfo.pi_name)-1);
 
     if (debug > 3)
-    	fprintf (stderr, "*debug: transcript_parse(t:['%s'] from k:[%s] line %d) - type='%c' path='%s'\n",
-		 (const char *) tran->t_shortname, 
-		 (const char *) tran->t_kfile,
-		 tran->t_linenum, tran->t_pinfo.pi_type, 
-		 (const char *) epath);
-
+        alert_transcript (NULL, stderr, tran, "transcript_parse() - type='%c', path='%s'",
+			  tran->t_pinfo.pi_type, (const char *) epath);
+    
     memset (&(tran->t_pinfo.pi_stat), 0, sizeof(tran->t_pinfo.pi_stat));
 
     /* reading and parsing the line */
@@ -229,7 +236,7 @@ transcript_parse( transcript_t *tran )
 	if (( ac != 5 ) && ( ac != 6 )) {
 	    fprintf( stderr, "%s: line %d: expected 5 or 6 arguments, got %d\n",
 		     (const char *) tran->t_fullname, tran->t_linenum, ac );
-	    exit( 2 );
+	    exit( EX_DATAERR ); /* from <sysexits.h> */
 	}
 
 	tran->t_pinfo.pi_stat.st_mode = strtol( av[ 2 ], NULL, 8 );
@@ -249,7 +256,7 @@ transcript_parse( transcript_t *tran )
 	if ( ac != 5 ) {
 	    fprintf( stderr, "%s: line %d: expected 5 arguments, got %d\n",
 		     (const char *) tran->t_fullname, tran->t_linenum, ac );
-	    exit( 2 );
+	    exit( EX_DATAERR );
 	}
 	tran->t_pinfo.pi_stat.st_mode = strtol( av[ 2 ], NULL, 8 );
 	tran->t_pinfo.pi_stat.st_uid = atoi( av[ 3 ] );
@@ -261,7 +268,7 @@ transcript_parse( transcript_t *tran )
 	if ( ac != 7 ) {
 	    fprintf( stderr, "%s: line %d: expected 7 arguments, got %d\n",
 		    tran->t_fullname, tran->t_linenum, ac );
-	    exit( 2 );
+	    exit( EX_DATAERR );
 	}
 	tran->t_pinfo.pi_stat.st_mode = strtol( av[ 2 ], NULL, 8 );
 	tran->t_pinfo.pi_stat.st_uid = atoi( av[ 3 ] );
@@ -283,12 +290,12 @@ transcript_parse( transcript_t *tran )
 	} else {
 	    fprintf( stderr, "%s: line %d: expected 3 or 6 arguments, got %d\n",
 		    tran->t_fullname, tran->t_linenum, ac );
-	    exit( 2 );
+	    exit( EX_DATAERR );
 	}
 	if (( epath = (filepath_t *) decode( av[ ac - 1 ] )) == NULL ) {
 	    fprintf( stderr, "%s: line %d: target path too long\n",
 		tran->t_fullname, tran->t_linenum );
-	    exit( 2 );
+	    exit( EX_DATAERR );
 	}
 	strncpy( (char *) tran->t_pinfo.pi_link, 
 		 (const char *) epath, sizeof(tran->t_pinfo.pi_link)-1 );
@@ -298,17 +305,17 @@ transcript_parse( transcript_t *tran )
 	if ( ac != 3 ) {
 	    fprintf( stderr, "%s: line %d: expected 3 arguments, got %d\n",
 		    tran->t_fullname, tran->t_linenum, ac );
-	    exit( 2 );
+	    exit( EX_DATAERR );
 	}
 	if (( epath = (filepath_t *) decode( av[ 2 ] )) == NULL ) {
 	    fprintf( stderr, "%s: line %d: target path too long\n",
 		tran->t_fullname, tran->t_linenum );
-	    exit( 2 );
+	    exit( EX_DATAERR );
 	}
 	if (( epath = convert_path_type( epath )) == NULL ) {
 	    fprintf( stderr, "%s: line %d: path too long\n",
 		    tran->t_fullname, tran->t_linenum );
-	    exit( 2 );
+	    exit( EX_DATAERR );
 	}
 	strncpy( (char *) tran->t_pinfo.pi_link, 
 		 (const char *) epath , sizeof(tran->t_pinfo.pi_link)-1);
@@ -319,7 +326,7 @@ transcript_parse( transcript_t *tran )
 	if ( ac != 8 ) {
 	    fprintf( stderr, "%s: line %d: expected 8 arguments, got %d\n",
 		    tran->t_fullname, tran->t_linenum, ac );
-	    exit( 2 );
+	    exit( EX_DATAERR );
 	}
 	tran->t_pinfo.pi_stat.st_mode = strtol( av[ 2 ], NULL, 8 );
 	tran->t_pinfo.pi_stat.st_uid = atoi( av[ 3 ] );
@@ -330,7 +337,7 @@ transcript_parse( transcript_t *tran )
 	    if (( cksum ) && ( strcmp( "-", av [ 7 ] ) == 0  )) {
 		fprintf( stderr, "%s: line %d: no cksums in transcript\n",
 			tran->t_fullname, tran->t_linenum );
-		exit( 2 );
+		exit( EX_DATAERR );
 	    }
 	}
 	strncpy( tran->t_pinfo.pi_cksum_b64, av[ 7 ],
@@ -342,11 +349,13 @@ transcript_parse( transcript_t *tran )
 	fprintf( stderr,
 	    "%s: line %d: unknown file type '%c'\n",
 	    tran->t_fullname, tran->t_linenum, *av[ 0 ] );
-	exit( 2 );
+	exit( EX_DATAERR );
     }
 
     return;
-}
+} /* end of transcript_parse() */
+
+
 
     void
 t_print( pathinfo_t *fs, transcript_t *tran, int flag ) 
@@ -403,8 +412,9 @@ t_print( pathinfo_t *fs, transcript_t *tran, int flag )
     }
 
     if (( epath = (filepath_t *) encode( (const char *) cur->pi_name )) == NULL ) {
-      fprintf( stderr, "Filename too long: %s\n", (const char *) cur->pi_name );
-	exit( 2 );
+        alert_transcript ("FATAL: ", stderr, tran, "Filename too long: '%s'",
+			  (const char *) cur->pi_name );
+	exit( EX_DATAERR );
     }
 
     /* print out info to file based on type */
@@ -443,7 +453,7 @@ t_print( pathinfo_t *fs, transcript_t *tran, int flag )
 		    (int)cur->pi_stat.st_uid, (int)cur->pi_stat.st_gid );
 	if (( epath = (filepath_t *) encode((char *)cur->pi_link )) == NULL ) {
 	    fprintf( stderr, "Filename too long: %s\n", cur->pi_link );
-	    exit( 2 );
+	    exit( EX_DATAERR );
 	}
 	fprintf( outtran, "%s\n", epath );
 	break;
@@ -453,7 +463,7 @@ t_print( pathinfo_t *fs, transcript_t *tran, int flag )
 	if (( epath = (filepath_t *) encode( (char *) cur->pi_link )) == NULL ) {
 	    fprintf( stderr, "Filename too long: %s\n", 
 		     (const char *) cur->pi_link );
-	    exit( 2 );
+	    exit( EX_DATAERR );
 	}
 	fprintf( outtran, "%s\n", (const char *) epath );
 	break;
@@ -474,15 +484,15 @@ t_print( pathinfo_t *fs, transcript_t *tran, int flag )
 	 */
 	if (( *cur->pi_cksum_b64 == '-' ) && cksum && !print_minus ) {
 	    if ( cur->pi_type == 'f' ) {
-		if ( do_cksum( cur->pi_name, cur->pi_cksum_b64 ) < 0 ) {
-		  perror( (const char *) cur->pi_name );
-		    exit( 2 );
+	        if ( do_cksum( cur->pi_name, cur->pi_cksum_b64 ) < 0 ) {
+		    perror( (const char *) cur->pi_name );
+		    exit( EX_DATAERR );
 		}
 	    } else if ( cur->pi_type == 'a' ) {
 		if ( do_acksum( cur->pi_name, cur->pi_cksum_b64,
 			&cur->pi_afinfo ) < 0 ) {
-		  perror( (const char *) cur->pi_name );
-		    exit( 2 );
+		    perror( (const char *) cur->pi_name );
+		    exit( EX_DATAERR );
 		}
 	    }
 	}
@@ -492,7 +502,7 @@ t_print( pathinfo_t *fs, transcript_t *tran, int flag )
 	 * but the corresponding transcript is negative, hence, retain
 	 * the file system's mtime.  Woof!
 	 */
-	fprintf( outtran, "%c %-37s\t%.4lo %5d %5d %9d %7" PRIofft "d %s\n",
+	fprintf( outtran, "%c %-37s\t%.4lo %5d %5d %9d %7" PRIofft " %s\n",
 		cur->pi_type, epath,
 		(unsigned long)( T_MODE & cur->pi_stat.st_mode ), 
 		(int)cur->pi_stat.st_uid, (int)cur->pi_stat.st_gid,
@@ -512,12 +522,12 @@ t_print( pathinfo_t *fs, transcript_t *tran, int flag )
 	break;
 
     case 'X' :
-      perror( (const char *) cur->pi_name );
-	exit( 2 );
+        perror( (const char *) cur->pi_name );
+	exit( EX_DATAERR );
 
     default:
 	fprintf( stderr, "%s: Unknown type: %c\n", cur->pi_name, cur->pi_type );
-	exit( 2 );
+	exit( EX_DATAERR );
     } 
 }
 
@@ -528,6 +538,8 @@ t_compare( pathinfo_t *fs, transcript_t *tran )
     mode_t		mode;
     mode_t		tran_mode;
     dev_t		dev;
+
+    static unsigned int warn_countdown = 3;  /* Warn about metadata changes requiring download. */
 
 #define _TCC(_flag) ((radmind_transcript_check_switches & _flag) == _flag)
 #define _TCC_UID _TCC(RADTC_SWS_UID)
@@ -556,7 +568,7 @@ t_compare( pathinfo_t *fs, transcript_t *tran )
 	    cmp = 1;
 	} else {
 	    cmp = pathcasecmp( fs->pi_name, tran->t_pinfo.pi_name,
-		case_sensitive );
+			       case_sensitive );
 	}
     }
 
@@ -587,6 +599,10 @@ t_compare( pathinfo_t *fs, transcript_t *tran )
     case 'a':			    /* hfs applefile */
     case 'f':			    /* file */
 	if ( tran->t_type != T_NEGATIVE ) {
+	    /*
+	     * A size change is gross enough to force a new download.
+	     * Don't even bother with a checksum check.
+	     */
 	    if ( _TCC_SIZE && (fs->pi_stat.st_size != tran->t_pinfo.pi_stat.st_size )) {
 		t_print( fs, tran, PR_DOWNLOAD );
 		break;
@@ -601,7 +617,7 @@ t_compare( pathinfo_t *fs, transcript_t *tran )
 		case 'f':
 		    if ( do_cksum( fs->pi_name, fs->pi_cksum_b64 ) < 0 ) {
 		        perror( (const char *) fs->pi_name );
-			exit( 2 );
+			exit( EX_DATAERR );
 		    }
 		    break;
 
@@ -609,7 +625,7 @@ t_compare( pathinfo_t *fs, transcript_t *tran )
 		    if ( do_acksum( fs->pi_name, fs->pi_cksum_b64,
 			    &fs->pi_afinfo ) < 0 ) {
 		        perror( (const char *) fs->pi_name );
-			exit( 2 );
+			exit( EX_DATAERR );
 		    }
 		    break;
 		} /* switch (fs->pi_type) */
@@ -619,17 +635,37 @@ t_compare( pathinfo_t *fs, transcript_t *tran )
 		    break;
 		}
 	    } else if ( _TCC_MTIME && (fs->pi_stat.st_mtime != tran->t_pinfo.pi_stat.st_mtime )) {
+	        /*
+		 * If we're NOT doing checksums, then a modification time change
+		 * will force download.  (But mode, uid, or gid changes won't...)
+		 */
+	        if (warn_countdown > 0) {
+		    alert_transcript ("warning: ", stderr, tran,
+				      "st_mtime change without checksums forces a download of '%s'",
+				      fs->pi_name);
+		    
+		    /* If we have verbosity turned up, don't disable the warnings. */ 
+		    if (verbose == 0)
+		        warn_countdown --;
+
+		    if (warn_countdown == 0) 
+		        fprintf(stderr, "... no more warnings issued for this condition.\n");
+		}
 		t_print( fs, tran, PR_DOWNLOAD );
 		break;
 	    }
 
+	    /*
+	     * Catch for if we ARE doing checksums - and checksums have
+	     * succeeded and the modification change time check has passed too.
+	     */
 	    if ( _TCC_MTIME && (fs->pi_stat.st_mtime != tran->t_pinfo.pi_stat.st_mtime )) {
 		t_print( fs, tran, PR_STATUS );
 		break;
 	    }
-	}
+	} /* If it's not a negaitive transcript... */
 
-        if ( ( _TCC_UID && ( fs->pi_stat.st_uid != tran->t_pinfo.pi_stat.st_uid ) ) || 
+        if ( ( _TCC_UID && ( fs->pi_stat.st_uid != tran->t_pinfo.pi_stat.st_uid ) ) ||
 	     ( _TCC_GID && ( fs->pi_stat.st_gid != tran->t_pinfo.pi_stat.st_gid ) ) ||
 	     ( _TCC_MODE && ( mode != tran_mode ) ) ) {
 	    if (( tran->t_type == T_NEGATIVE ) && ( edit_path == APPLICABLE )) {
@@ -672,21 +708,26 @@ t_compare( pathinfo_t *fs, transcript_t *tran )
 
     case 'l':			    /* link */
 	if ( tran->t_type != T_NEGATIVE ) {
-	  if (( filepath_cmp( fs->pi_link, tran->t_pinfo.pi_link ) != 0 )
+	    if (( filepath_cmp( fs->pi_link, tran->t_pinfo.pi_link ) != 0 )
 #ifdef HAVE_LCHOWN
-	      || ( _TCC_UID && ( fs->pi_stat.st_uid != tran->t_pinfo.pi_stat.st_uid ) ) 
-	      || ( _TCC_GID && ( fs->pi_stat.st_gid != tran->t_pinfo.pi_stat.st_gid ) )
+		|| ( _TCC_UID && ( fs->pi_stat.st_uid != tran->t_pinfo.pi_stat.st_uid ) ) 
+		|| ( _TCC_GID && ( fs->pi_stat.st_gid != tran->t_pinfo.pi_stat.st_gid ) )
 #endif /* HAVE_LCHOWN */
 #ifdef HAVE_LCHMOD
-	      || ( _TCC_MODE && (mode != tran_mode ) )
+		|| ( _TCC_MODE && (mode != tran_mode ) )
 #endif /* HAVE_LCHMOD */
-	    /* strcmp */ ) {
-		t_print( fs, tran, PR_STATUS );
+		/* strcmp */ ) {
+	        t_print( fs, tran, PR_STATUS );
 	    }
 	}
 	break;
 
     case 'h':			    /* hard */
+      /*XXX --- rsc@umich.edu 2010-10-16
+       *XXX
+       *XXX Does this catch the case where a subsequent update to the target
+       *XXX of the hardlink changes?  I think not...
+       *XXX*/
       if (( filepath_cmp( fs->pi_link, tran->t_pinfo.pi_link ) != 0 ) ||
 		( hardlink_changed( fs, 0 ) != 0 )) {
 	    t_print( fs, tran, PR_STATUS );
@@ -728,7 +769,9 @@ t_compare( pathinfo_t *fs, transcript_t *tran )
     }
 
     return T_MOVE_BOTH;
-}
+} /* end of t_compare() */
+
+
 
     int
 t_exclude( const filepath_t *path )
@@ -818,12 +861,18 @@ transcript_select( void )
     }
 }
 
+
+/* 
+ * REturn values:
+ * 0 --
+ * 1 -- is directory
+ */
     int
 transcript_check( const filepath_t *path, struct stat *st, char *type,
-		struct applefileinfo *afinfo, int parent_minus )
+		  struct applefileinfo *afinfo, int parent_minus )
 {
     pathinfo_t		pi;
-    int			enter = 0;
+    int			enter = T_COMP_ISFILE;	/* Default transcript_check() return value */
     int 		len;
     char		epath[ MAXPATHLEN ];
     char		*linkpath;
@@ -848,9 +897,9 @@ transcript_check( const filepath_t *path, struct stat *st, char *type,
 		}
 
 		/* move the transcripts ahead */
-		tran = transcript_select();
+		(void) transcript_select();
 
-		return( 0 );
+		return( T_COMP_ISFILE );
 	    }
 	}
 
@@ -873,9 +922,9 @@ transcript_check( const filepath_t *path, struct stat *st, char *type,
 
 	/* By default, go into directories */
 	if ( S_ISDIR( pi.pi_stat.st_mode )) {
-	    enter = 1;
+	    enter = T_COMP_ISDIR;
 	} else { 
-	    enter = 0;
+	    enter = T_COMP_ISFILE;
 	}
 
 	/* initialize cksum field. */
@@ -885,17 +934,27 @@ transcript_check( const filepath_t *path, struct stat *st, char *type,
     for (;;) {
 	tran = transcript_select();
 
+	/* Side effrect of 't_compare()' is possible standard output */
 	switch ( t_compare(( path ? &pi : NULL ), tran )) {
-	case T_MOVE_FS :
+	case T_MOVE_FS:
+	    if (debug > 0)
+	        alert_transcript(NULL, stderr, tran, 
+				 "t_compare() returns T_MOVE_FS, transcript_check() returns %d",
+				 enter);
 	    return( enter );
 
 	case T_MOVE_BOTH :
 	    /* But don't go into negative directories */
 	    if (( tran->t_type == T_NEGATIVE ) &&
 		    ( tran->t_pinfo.pi_type == 'd' )) {
-		enter = 2;
+		enter = T_COMP_ISNEG;
 	    }
 	    transcript_parse( tran );
+
+	    if (debug > 0)
+	        alert_transcript(NULL, stderr, tran,
+			       "t_compare() returns T_MOVE_BOTH, transcript_check() returns %d",
+			       enter);
 	    return( enter );
 
 	case T_MOVE_TRAN :
@@ -903,11 +962,18 @@ transcript_check( const filepath_t *path, struct stat *st, char *type,
 	    break;
 
 	default :
-	    fprintf( stderr, "t_compare returned an unexpected value!\n" );
-	    exit( 2 );
-	}
+	    alert_transcript("FATAL: ", stderr, tran, 
+			     "t_compare() returned an unexpected value for '%s'\n",
+			     path);
+	    exit( EX_SOFTWARE);
+	} /* switch (t_compare()) ... */
     }
-}
+
+    fprintf(stderr, "t_compare() falls off the end for '%s'\n",
+	    path);
+
+    return (T_COMP_ERROR);
+} /* end of transcript_check() */
 
     void
 t_new( int type, const filepath_t *fullname, const filepath_t *shortname, const filepath_t *kfile ) 
@@ -920,7 +986,7 @@ t_new( int type, const filepath_t *fullname, const filepath_t *shortname, const 
     if (( new = (transcript_t *)calloc(1, sizeof( transcript_t )))
 	    == NULL ) {
 	perror( "malloc" );
-	exit( 2 );
+	exit( EX_OSERR );
     }
     if (debug > 4)
 	fprintf (stderr, "*debug: t_new(%d, '%s', '%s', '%s'), calloc() returns %p\n",
@@ -955,7 +1021,7 @@ t_new( int type, const filepath_t *fullname, const filepath_t *shortname, const 
 
 	if (( new->t_in = fopen((char *) fullname, "r" )) == NULL ) {
 	    perror( (const char *)fullname );
-	    exit( 2 );
+	    exit( EX_IOERR );
 	}
 
 	if (debug > 3)
@@ -1000,9 +1066,10 @@ t_new( int type, const filepath_t *fullname, const filepath_t *shortname, const 
 		got = read (fileno(new->t_in), new->buffered, buflen);
 
 		if (got != (buflen-1)) {
-		  fprintf (stderr, "FATAL ERROR: Didn't read entire transcript ('%s') at once, %lld of %llu\n",
-			   fullname, got, buflen);
-		  exit (5);
+		    fprintf (stderr,
+			     "FATAL ERROR: Didn't read entire transcript ('%s') at once, %lld of %llu\n",
+			     fullname, got, buflen);
+		    exit (EX_IOERR);
 		}
 
 		new->buffered[got] = '\0'; /* Saftey. */
@@ -1053,10 +1120,8 @@ t_remove( int type, const filepath_t *shortname )
 	cur = *p_next;
 
 	if (debug > 3)
-	    fprintf (stderr,
-		     "*debug: t_remove() - check type=%d, t:['%s'] from k:['%s'] ID=%d\n", 
-		     cur->t_type, (const char *) cur->t_shortname, 
-		     (const char *) cur->t_kfile, cur->id);
+	    alert_transcript (NULL, stderr, cur, "t_remove() - check type=%d", cur->t_type); 
+
 	if (debug > 4)
 	    fprintf (stderr, "*debug: at %p\n", cur);
 
@@ -1152,7 +1217,7 @@ transcript_init( const filepath_t *kfile, int location )
 
     if (( kdir = filepath_dup( kfile )) == NULL ) {
         perror( "strdup failed" );
-        exit( 2 );
+        exit( EX_OSERR );
     }
     if (( p = (filepath_t *) strrchr( (const char *) kdir, '/' )) == NULL ) {
         /* No '/' in kfile - use working directory */
@@ -1164,22 +1229,22 @@ transcript_init( const filepath_t *kfile, int location )
     }
     if (( kfile_list = list_new( )) == NULL ) {
 	perror( "list_new" );
-	exit( 2 );
+	exit( EX_OSERR );
     }
     if ( list_insert( kfile_list, kfile ) != 0 ) {
 	perror( "list_insert" );
-	exit( 2 );
+	exit( EX_SOFTWARE );
     }
     if (( special_list = list_new( )) == NULL ) {
 	perror( "list_new" );
-	exit( 2 );
+	exit( EX_OSERR );
     }
     if (( exclude_list = list_new()) == NULL ) {
 	perror( "list_new" );
-	exit( 2 );
+	exit( EX_OSERR );
     }
     if ( read_kfile( kfile,location ) != 0 ) {
-	exit( 2 );
+	exit( EX_SOFTWARE );
     }
 
     if (( list_size( special_list ) > 0 ) && ( location == K_CLIENT )) {
@@ -1188,7 +1253,7 @@ transcript_init( const filepath_t *kfile, int location )
 	   		 > MAXPATHLEN ) {
 	    fprintf( stderr, 
 		    "special path too long: %s%s\n", kdir, special );
-	    exit( 2 );
+	    exit( EX_DATAERR );
 	}
 	sprintf( (char *) fullpath, "%s%s", (const char *) kdir,
 		 ( const char *) special );
@@ -1197,7 +1262,7 @@ transcript_init( const filepath_t *kfile, int location )
 
     if ( tran_head->t_type == T_NULL  && edit_path == APPLICABLE ) {
 	fprintf( stderr, "-A option requires a non-NULL transcript\n" );
-	exit( 2 );
+	exit( EX_USAGE );
     }
 
     return;
@@ -1359,7 +1424,7 @@ read_kfile( const filepath_t *kfile, int location )
 		fprintf( stderr, "%s: line %d: path too long\n",
 			 (const char *) kfile, linenum );
 		depth--;
-		exit( 2 );
+		exit( EX_DATAERR );
 	    }
 
 	    if ( minus ) {
@@ -1383,7 +1448,7 @@ read_kfile( const filepath_t *kfile, int location )
 		fprintf( stderr, "%s: line %d: path too long\n",
 			 (const char *) kfile, linenum );
 		depth--; 
-		exit( 2 );
+		exit( EX_DATAERR );
 	    }
 
 	    if ( minus ) {
@@ -1433,19 +1498,245 @@ transcript_free( )
      * Call transcript_check() with NULL to indicate that we've run out of
      * filesystem to compare against.
      */
-    transcript_check( NULL, NULL, NULL, NULL, 0 );
+    (void) transcript_check( NULL, NULL, NULL, NULL, 0 );
 
     while ( tran_head != NULL ) {
 	next = tran_head->t_next;
+
 	if ( tran_head->t_in != NULL ) {
 	    fclose( tran_head->t_in );
 	    tran_head->t_in = (FILE *) NULL;
 	}
+
 	if ( tran_head->buffered != NULL) {
-	  free( tran_head->buffered );
-	  tran_head->buffered = NULL;
+	    free( tran_head->buffered );
+	    tran_head->buffered = NULL;
 	}
+
 	free( tran_head );
 	tran_head = next;
     }
-}
+} /* end of transcript_free( (void) ) */
+
+
+   int
+snprintf_transcript_id (char *buff, size_t bufflen, const transcript_t *tran)
+{
+    if ((buff == (char *) NULL) || (bufflen < 10) || (tran == (transcript_t *) NULL)) {
+        errno = EINVAL;
+	return (-1);
+    }
+
+    return snprintf (buff, bufflen, 
+		     "t:['%s'] k:['%s'] line %d, ID=%u",
+		     tran->t_shortname, tran->t_kfile,
+		     tran->t_linenum, tran->id);
+    
+} /* end of snprintf_transcript_id() */
+
+
+    int
+fprintf_transcript_id (FILE *out, const transcript_t *tran)
+{
+    if ((out == (FILE *) NULL) || (tran == (transcript_t *) NULL)) {
+        errno = EINVAL;
+	return (-1);
+    }
+
+    return fprintf (out, "t:['%s'] k:['%s'] line %d, ID=%u",
+		    tran->t_shortname, tran->t_kfile,
+		    tran->t_linenum, tran->id);
+    
+} /* end of fprintf_transcript_id() */
+
+
+
+    void
+fprintf_transcript_header (const char *pfx, const char *sfx, 
+			   FILE *out, const unsigned char *file,
+			   const transcript_t *tran, int *p_msg)
+{
+    int dummy;
+    
+    if (pfx == (char *) NULL)
+        pfx = "";
+
+    if (sfx == (char *) NULL)
+        sfx = "\t";
+
+    if (p_msg == (int *) NULL) {
+        p_msg = &dummy;
+	dummy = 0;  /* Delay stack initialization to here. */
+    }
+
+    if (!*p_msg) {
+        fprintf (out, "%s", pfx);
+        fprintf_transcript_id (out, tran);
+        fprintf (out, "\n%s", sfx);
+    }
+    else
+      fprintf (out, ", ");
+
+    (*p_msg) ++;
+
+    return;
+
+}  /* end of fprintf_transcript_header() */
+
+   void
+vfprintf_transcript (const char *pfx, const char *sfx, FILE *out,
+		     const unsigned char *file, const transcript_t *tran,
+		     int *p_msg,
+		     const char *fmt, va_list ap)
+{
+    fprintf_transcript_header (pfx, sfx, out, file, tran, p_msg);
+
+    if ((fmt != (char *) NULL) && (*fmt != '\0'))
+        vfprintf (out, fmt, ap);
+    
+    return;
+
+} /* end of vfprintf_transcript() */
+
+    void
+fprintf_transcript (const char *pfx, const char *sfx, FILE *out,
+		    const unsigned char *file, const transcript_t *tran,
+		    int *p_msg, 
+		    const char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+    
+    vfprintf_transcript (pfx, sfx, out, file, tran, p_msg, fmt, ap);
+    
+    va_end(ap);
+    
+    return;
+
+} /* end of fprintf_transcript() */
+		    
+static const char verbose_pfx[] = "#  ";
+static const char verbose_sfx[] = "#\t";
+static const char debug_pfx[] = "*debug: ";
+#define debug_sfx debug_pfx	/* Cheat */
+
+
+  void
+valert_transcript (const char *pfx, FILE *out,
+		   const transcript_t *tran,
+		   const char *fmt, va_list ap)
+{
+    if ((out == (FILE *) NULL) || (tran == (transcript_t *) NULL))
+        return;
+
+    if (pfx == (char *) NULL)
+        pfx = debug_pfx;
+
+    if (*pfx)
+        fprintf (out, "%s", pfx);
+
+  /* Put whitespace around message (as needed) */
+    if ((fmt != (char *) NULL) && *fmt ) {
+        if (*pfx)
+	    fprintf(out, " "); /* as needed */
+
+	vfprintf (out, fmt, ap);
+	fprintf (out, " ");
+    }
+
+    fprintf_transcript_id (out, tran);
+    
+    fprintf(out, "\n");
+    
+    return;
+} /* end of valert_transcript() */
+
+
+    void
+alert_transcript (const char *pfx, FILE *out, const transcript_t *tran,
+		      const char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+
+    valert_transcript (pfx, out, tran, fmt, ap);
+ 
+    va_end(ap);
+
+    return;
+} /* end of alert_transcript() */
+
+
+ 
+   void
+verbose_transcript_header  (const unsigned char *file, const transcript_t *tran,
+			    int *p_msg)
+{
+    if (p_msg == (int *) NULL)
+        return;
+    
+    fprintf_transcript_header (verbose_pfx, verbose_sfx, stdout, file, tran, p_msg);
+
+    return;
+
+} /* end of verbose_transcript_header() */
+
+
+   void
+verbose_transcript  (const unsigned char *file, const transcript_t *tran,
+		     int *p_msg, const char *fmt, ...)
+{
+    va_list ap;
+
+    va_start (ap, fmt);
+
+    if (p_msg != (int *) NULL) {
+        fprintf_transcript_header (verbose_pfx, verbose_sfx, stdout, file, tran, p_msg);
+
+	if ((fmt != (char *) NULL) && (*fmt != '\0')) 
+	    vfprintf (stdout, fmt, ap);
+    }
+
+    va_end (ap);
+  return;
+
+} /* end of verbose_transcript() */
+
+
+   void
+debug_transcript_header  (FILE *out,
+			  const unsigned char *file, const transcript_t *tran,
+			  int *p_msg)
+{
+    if (p_msg == (int *) NULL)
+        return;
+
+    fprintf_transcript_header (debug_pfx, debug_sfx, stderr, file, tran, p_msg);
+
+    return;
+} /* end of debug_transcript_header() */
+
+
+
+   void
+debug_transcript  (FILE *out,
+		   const unsigned char *file, const transcript_t *tran,
+		   int *p_msg,
+		   const char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+
+    if (p_msg != (int *) NULL) {
+        fprintf_transcript_header (debug_pfx, debug_sfx, stderr, file, tran, p_msg);
+
+	if ((fmt != (char *) NULL) && (*fmt != '\0')) 
+	  vfprintf (stderr, fmt, ap);
+    }
+
+    va_end(ap);
+    return;
+} /* end of debug_transcript_header() */

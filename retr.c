@@ -113,7 +113,7 @@ retr( SNET *sn, const filepath_t *pathdesc, const filepath_t *path,
 	return( -1 );
     }
     size = strtoofft( line, NULL, 10 );
-    if ( verbose ) printf( "<<< %" PRIofft "d\n", size );
+    if ( verbose ) printf( "<<< %" PRIofft "\n", size );
     if ( transize >= 0 && size != transize ) {
 	fprintf( stderr, "line %d: size in transcript does not match size "
 	    "from server\n", linenum );
@@ -286,7 +286,7 @@ retr_applefile( SNET *sn, const filepath_t *pathdesc, const filepath_t *path,
 	return( -1 );
     }
     size = strtoofft( line, NULL, 10 );
-    if ( verbose ) printf( "<<< %" PRIofft "d\n", size );
+    if ( verbose ) printf( "<<< %" PRIofft "\n", size );
     if ( transize >= 0 && size != transize ) {
 	fprintf( stderr, "line %d: size in transcript does not match size"
 	    "from server\n", linenum );

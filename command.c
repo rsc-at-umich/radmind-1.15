@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2007, 2013 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2007, 2013-2014 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -22,6 +22,7 @@
 #include <syslog.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <sysexits.h>
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -194,14 +195,14 @@ f_help( SNET *sn, int ac, char **av )
 f_noauth( SNET *sn, int ac, char **av )
 {
     snet_writef( sn, "%d No access for %s\r\n", 500, remote_host );
-    exit( 1 );
+    exit( EX_NOHOST );
 }
 
     int
 f_notls( SNET *sn, int ac, char **av )
 {
     snet_writef( sn, "%d Must issue a STARTTLS command first\r\n", 530 );
-    exit( 1 );
+    exit( EX_DATAERR );
 }
 
     int
@@ -448,7 +449,7 @@ f_retr( SNET *sn, int ac, char **av )
      * Here's a problem.  Do we need to add long long support to
      * snet_writef?
      */
-    snet_writef( sn, "240 Retrieving file\r\n%" PRIofft "d\r\n", st.st_size );
+    snet_writef( sn, "240 Retrieving file\r\n%" PRIofft "\r\n", st.st_size );
 
     /* dump file */
 
@@ -619,7 +620,7 @@ f_stat( SNET *sn, int ac, char *av[] )
     if ( !md ) {
 	/* XXX */
 	fprintf( stderr, "%s: unsupported checksum\n", "sha1" );
-	exit( 1 );
+	exit( EX_SOFTWARE );
     }
     if ( do_cksum( path, cksum_b64 ) < 0 ) {
         syslog( LOG_ERR, "do_cksum: (const char *) %s: %m", (const char *) path );
@@ -631,11 +632,11 @@ f_stat( SNET *sn, int ac, char *av[] )
     switch ( key ) {
     case K_COMMAND:
 	if ( ac == 2 ) {
-	    snet_writef( sn, "%s %s %o %d %d %d %" PRIofft "d %s\r\n",
+	    snet_writef( sn, "%s %s %o %d %d %d %" PRIofft " %s\r\n",
 		"f", "command", DEFAULT_MODE, DEFAULT_UID, DEFAULT_GID,
 		st.st_mtime, st.st_size, cksum_b64 );
 	} else {
-	    snet_writef( sn, "%s %s %o %d %d %d %" PRIofft "d %s\r\n",
+	    snet_writef( sn, "%s %s %o %d %d %d %" PRIofft " %s\r\n",
 		"f", av[ 2 ], DEFAULT_MODE, DEFAULT_UID, DEFAULT_GID,
 		st.st_mtime, st.st_size, cksum_b64 );
 	}
@@ -643,7 +644,7 @@ f_stat( SNET *sn, int ac, char *av[] )
         
 		    
     case K_TRANSCRIPT:
-	snet_writef( sn, "%s %s %o %d %d %d %" PRIofft "d %s\r\n",
+	snet_writef( sn, "%s %s %o %d %d %d %" PRIofft " %s\r\n",
 		"f", av[ 2 ], 
 		DEFAULT_MODE, DEFAULT_UID, DEFAULT_GID,
 		st.st_mtime, st.st_size, cksum_b64 );
@@ -662,7 +663,7 @@ f_stat( SNET *sn, int ac, char *av[] )
 		"f_stat: transcript path longer than MAXPATHLEN" );
 
 	    /* return constants */
-	    snet_writef( sn, "%s %s %o %d %d %d %" PRIofft "d %s\r\n",
+	    snet_writef( sn, "%s %s %o %d %d %d %" PRIofft " %s\r\n",
 		    "f", av[ 2 ], 
 		    DEFAULT_MODE, DEFAULT_UID, DEFAULT_GID,
 		    st.st_mtime, st.st_size, cksum_b64 );
@@ -689,7 +690,7 @@ f_stat( SNET *sn, int ac, char *av[] )
 	if (( av = special_t( path, enc_file )) == NULL ) {
 	  if (( av = special_t( (const unsigned char *) "transcript/special.T", enc_file ))
 		    == NULL ) {
-		snet_writef( sn, "%s %s %o %d %d %d %" PRIofft "d %s\r\n",
+		snet_writef( sn, "%s %s %o %d %d %d %" PRIofft " %s\r\n",
 			     "f", (const char *) enc_file, 
 			DEFAULT_MODE, DEFAULT_UID, DEFAULT_GID, 
 			st.st_mtime, st.st_size, cksum_b64 );
@@ -697,7 +698,7 @@ f_stat( SNET *sn, int ac, char *av[] )
 		return( 0 );
 	    }
 	}
-	snet_writef( sn, "%s %s %s %s %s %d %" PRIofft "d %s\r\n",
+	snet_writef( sn, "%s %s %s %s %s %d %" PRIofft " %s\r\n",
 		     av[ 0 ], (const char *) enc_file,
 		av[ 2 ], av[ 3 ], av[ 4 ],
 		st.st_mtime, st.st_size, cksum_b64 );
@@ -745,7 +746,7 @@ f_stor( SNET *sn, int ac, char *av[] )
 
     if ( checkuser && ( !authorized )) {
 	snet_writef( sn, "%d Not logged in\r\n", 551 );
-	exit( 1 );
+	exit( EX_NOUSER );
     }
     /* decode() uses static mem, so strdup() */
     if (( d_tran = (unsigned char *) decode( av[ 2 ] )) == NULL ) {
@@ -799,7 +800,7 @@ f_stor( SNET *sn, int ac, char *av[] )
 	if ( mkdir( (const char *) xscriptdir, 0777 ) < 0 ) {
 	    if ( errno == EEXIST ) {
 	        snet_writef( sn, "%d Transcript exists\r\n", 551 );
-		exit( 1 );
+		exit( EX_DATAERR );
 	    }
 	    snet_writef( sn, "%d %s: %s\r\n",
 			 551, (const char *) xscriptdir, strerror( errno ));
@@ -813,7 +814,7 @@ f_stor( SNET *sn, int ac, char *av[] )
 	 */
       if (( strcmp( (const char *) upload_xscript, av[ 2 ] ) != 0 )) {
 	    snet_writef( sn, "%d Incorrect Transcript %s\r\n", 552, av[ 2 ] );
-	    exit( 1 );
+	    exit( EX_NOINPUT );
 	}
 
 	/* decode() uses static mem, so strdup() */
@@ -823,7 +824,7 @@ f_stor( SNET *sn, int ac, char *av[] )
 
 	    free( (void *) d_tran );
 
-	    return( 1 );
+	    return( EX_DATAERR );
 	} 
 
 
@@ -866,21 +867,22 @@ f_stor( SNET *sn, int ac, char *av[] )
 
     default:
         snet_writef( sn, "%d STOR Syntax error\r\n", 550 );
-	exit( 1 ); 
+	exit( EX_CANTCREAT ); 
     }
 
     if (( fd = open( (const char *) upload, O_CREAT|O_EXCL|O_WRONLY, 0666 )) < 0 ) {
-      if ( mkdirs( upload ) < 0 ) {
-	syslog( LOG_ERR, "f_stor: mkdir: %s: %m", (const char *) upload );
-	snet_writef( sn, "%d %s: %s\r\n", 555, (const char *) upload, strerror( errno ));
-	    exit( 1 );
+        if ( mkdirs( upload ) < 0 ) {
+	    syslog( LOG_ERR, "f_stor: mkdir: %s: %m", (const char *) upload );
+	    snet_writef( sn, "%d %s: %s\r\n", 555, (const char *) upload, 
+			 strerror( errno ));
+	    exit( EX_CANTCREAT );
       }
 
 
       if (( fd = open( (const char *) upload, O_CREAT|O_EXCL|O_WRONLY, 0666 )) < 0 ) {
 	    syslog( LOG_ERR, "f_stor: open: %s: %m", upload );
 	    snet_writef( sn, "%d %s: %s\r\n", 555, (const char *) upload, strerror( errno ));
-	    exit( 1 );
+	    exit( EX_CANTCREAT );
 	}
     }
 
@@ -910,21 +912,22 @@ f_stor( SNET *sn, int ac, char *av[] )
 	}
 
 	if ( write( fd, buf, rc ) != rc ) {
-	  snet_writef( sn, "%d %s: %s\r\n", 555, (const char *) upload, 
-		       strerror( errno ));
-	    exit( 1 );
+	    snet_writef( sn, "%d %s: %s\r\n", 555, (const char *) upload, 
+			 strerror( errno ));
+	    exit( EX_IOERR );
 	}
     }
 
     if ( len != 0 ) {
-	syslog( LOG_ERR, "f_stor: len is %" PRIofft "d", len );
+	syslog( LOG_ERR, "f_stor: len is %" PRIofft, len );
 	snet_writef( sn, "%d %s: internal error!\r\n", 555, (const char *) upload );
 	exit( 1 );
     }
 
     if ( close( fd ) < 0 ) {
-      snet_writef( sn, "%d %s: %s\r\n", 555, (const char *) upload, strerror( errno ));
-	exit( 1 );
+        snet_writef( sn, "%d %s: %s\r\n", 555, (const char *) upload,
+		     strerror( errno ));
+	exit( EX_IOERR );
     }
 
     syslog( LOG_DEBUG, "f_stor: file %s stored", (const char *) upload );
@@ -942,7 +945,7 @@ f_stor( SNET *sn, int ac, char *av[] )
 	snet_writef( sn, "%d Length doesn't match sent data %s\r\n",
 		     555, (const char *) upload );
 	(void)unlink( (const char *) upload );
-	exit( 1 );
+	exit( EX_DATAERR );
     }
 
     snet_writef( sn, "%d File stored\r\n", 250 );
@@ -1048,7 +1051,7 @@ f_starttls( SNET *sn, int ac, char **av )
 
 	if ( read_kfile( sn, command_file ) != 0 ) {
 	    /* error message given in list_transcripts */
-	    exit( 1 );
+	    exit(EX_NOINPUT);
 	}
     }
 
@@ -1516,6 +1519,7 @@ error:
     return( -1 );
 }
 
+/* Returns sysexit values. */
     int
 cmdloop( int fd, struct sockaddr_in *sin )
 {
@@ -1541,8 +1545,8 @@ cmdloop( int fd, struct sockaddr_in *sin )
     }
 
     if (( sn = snet_attach( fd, 1024 * 1024 )) == NULL ) {
-	syslog( LOG_ERR, "snet_attach: %m" );
-	exit( 1 );
+	syslog( LOG_ERR, "snet_attach(fd, 1024 * 1024): %m" );
+	exit( EX_SOFTWARE );
     }
     remote_addr = strdup( inet_ntoa( sin->sin_addr ));
 
@@ -1569,7 +1573,7 @@ cmdloop( int fd, struct sockaddr_in *sin )
 	    syslog( LOG_INFO, "%s: connection refused: server busy\r\n",
 		    remote_host );
 	    snet_writef( sn, "%d Server busy\r\n", 420 );
-	    exit( 1 );
+	    exit( EX_UNAVAILABLE );
 	}
     }
 
@@ -1577,7 +1581,7 @@ cmdloop( int fd, struct sockaddr_in *sin )
 	syslog( LOG_ERR, "new_list: %m" );
 	snet_writef( sn,
 	    "%d Service not available, closing transmission channel\r\n", 421 );
-	return( -1 );
+	return(EX_UNAVAILABLE);
     }
     
     if ( authlevel == 0 ) {
@@ -1586,11 +1590,11 @@ cmdloop( int fd, struct sockaddr_in *sin )
 	    syslog( LOG_INFO, "%s: Access denied: Not in config file",
 		remote_host );
 	    snet_writef( sn, "%d No access for %s\r\n", 500, remote_host );
-	    exit( 1 );
+	    exit( EX_NOINPUT );
 	} else {
 	    if ( read_kfile( sn, command_file ) != 0 ) {
 		/* error message given in read_kfile */
-		exit( 1 );
+		exit( EX_NOINPUT );
 	    }
 	    commands = auth;
 	    ncommands = sizeof( auth ) / sizeof( auth[ 0 ] );
@@ -1599,7 +1603,7 @@ cmdloop( int fd, struct sockaddr_in *sin )
 
     if ( gethostname( hostname, MAXHOSTNAMELEN ) < 0 ) {
 	syslog( LOG_ERR, "gethostname: %m" );
-	exit( 1 );
+	exit( EX_NOHOST );
     }
 
     snet_writef( sn, "200%sRAP 1 %s %s radmind access protocol\r\n",
@@ -1632,7 +1636,7 @@ cmdloop( int fd, struct sockaddr_in *sin )
 
 	if (( ac = argcargv( line, &av )) < 0 ) {
 	    syslog( LOG_ERR, "argcargv: %m" );
-	    return( 1 );
+	    return( EX_DATAERR );
 	}
 
 	if ( ac == 0 ) {
@@ -1662,4 +1666,4 @@ cmdloop( int fd, struct sockaddr_in *sin )
 	syslog( LOG_ERR, "snet_getline: %m" );
     }
     return( 0 );
-}
+} /* end  of cmdloop() */

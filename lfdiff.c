@@ -42,8 +42,6 @@
 
 char	               *progname = "lfdiff";
 extern struct timeval	timeout;
-int			verbose = 0;
-extern int		debug;
 int			dodots = 0;
 int			linenum = 0;
 int			cksum = 0;
@@ -57,53 +55,13 @@ SSL_CTX  		*ctx;
 
 extern char             *caFile, *caDir, *cert, *privatekey;
 
-static void verbose_transcript_header (const unsigned char *file, const struct transcript *tran, int *p_msg);
-static void debug_transcript_header (FILE *out, const unsigned char *file, const struct transcript *tran, int *p_msg);
 
-   static void
-verbose_transcript_header  (const unsigned char *file, const struct transcript *tran, int *p_msg)
-{
-  if (p_msg == (int *) NULL)
-    return;
-
-  if (!*p_msg)
-    printf ("#  File: '%s' from t:['%s'] k:['%s'] line %d\n#\t",
-	    file, tran->t_shortname, tran->t_kfile, tran->t_linenum);
-  else
-    printf (", ");
-  
-  (*p_msg)++;
-
-  return;
-} /* end of verbose_transcript_header() */
-
-
-   static void
-debug_transcript_header  (FILE *out, const unsigned char *file, const struct transcript *tran, int *p_msg)
-{
-  if (p_msg == (int *) NULL)
-    return;
-
-
-  if (!*p_msg)
-    fprintf (out, "*debug: File: '%s' from t:['%s'] k:['%s'] line %d\n*debug: ",
-	     file, tran->t_shortname, tran->t_kfile, tran->t_linenum);
-  else
-    fprintf (out, ", ");
-  
-  (*p_msg)++;
-
-  return;
-} /* end of debug_transcript_header() */
-
-
-
-   static struct transcript *
+   static transcript_t *
 precedent_transcript(const unsigned char *kfile, const unsigned char *file, int where )
 {
-    extern struct transcript	*tran_head;
+    extern transcript_t	*tran_head;
     struct stat		file_stat;
-    struct transcript	*tran;
+    transcript_t	*tran;
     int			cmp = 0;
 
     /* verify that file exists on the local system */
@@ -131,13 +89,13 @@ precedent_transcript(const unsigned char *kfile, const unsigned char *file, int 
 	return( NULL );
     }
 
-    for ( tran = tran_head; tran != (struct transcript *) NULL; tran = tran->t_next ) {
+    for ( tran = tran_head; tran != (transcript_t *) NULL; tran = tran->t_next ) {
 
 	/* Skip NULL/empty transcripts */
 	if ( tran->t_eof ) {
 	    if (debug > 1)
-	    	fprintf (stderr, "*debug: empty transcript t:['%s'] from k:['%s'] line %d, ID=%u\n",
-			tran->t_shortname, tran->t_kfile, tran->t_linenum, tran->id);
+	        alert_transcript (NULL, stderr, tran, "empty transcript");
+
 	    continue;
 	}
 
@@ -150,16 +108,15 @@ precedent_transcript(const unsigned char *kfile, const unsigned char *file, int 
         }
         if ( tran->t_eof ) {
 	    if (debug > 1)
-	    	fprintf (stderr, "*debug: file '%s' not found (EOF) in t:['%s'] from k:['%s'] ID=%u\n",
-			file, tran->t_shortname, tran->t_kfile, tran->id);
+	        alert_transcript (NULL, stderr, tran, "file '%s' not found (EOF)",
+				file);
             continue;
         }
 
         if ( cmp > 0 ) {
 	    if (debug > 1)
-	    	fprintf (stderr,
-			 "*debug: file '%s' not found before in t:['%s'] from k:['%s'] line %d, ID=%u\n",
-			 file, tran->t_shortname, tran->t_kfile, tran->t_linenum, tran->id);
+	        alert_transcript (NULL, stderr, tran, "file '%s' not found before ",
+				  file);
             continue;
         }
 
@@ -170,29 +127,29 @@ precedent_transcript(const unsigned char *kfile, const unsigned char *file, int 
 	    	switch (tran->t_pinfo.pi_type) {
 		case 'f':
 	    	    if ((file_stat.st_size != tran->t_pinfo.pi_stat.st_size) || (debug > 1)) {
-		        verbose_transcript_header (file, tran, &msg);
-		        printf ("size (%llu %s= %llu)", (unsigned long long) tran->t_pinfo.pi_stat.st_size,
-				tran->t_pinfo.pi_stat.st_size == file_stat.st_size ? "=" : "!",
-				(unsigned long long) file_stat.st_size);
+		        verbose_transcript (file, tran, &msg,
+					    "size (%llu %s= %llu)",
+					    (unsigned long long) tran->t_pinfo.pi_stat.st_size,
+					    tran->t_pinfo.pi_stat.st_size == file_stat.st_size ? "=" : "!",
+					    (unsigned long long) file_stat.st_size);
 		    }
 
-		    if ((file_stat.st_mtime != tran->t_pinfo.pi_stat.st_mtime) | (debug > 1)) {
+		    if ((file_stat.st_mtime != tran->t_pinfo.pi_stat.st_mtime) || (debug > 1)) {
 		    	char file_time[64], tran_time[64];
 			struct tm tm;
 
-		        verbose_transcript_header (file, tran, &msg);
-			
+			memset ((void *)&tm, 0, sizeof(tm));
 			localtime_r ( &(file_stat.st_mtime), &tm);
 			strftime (file_time, sizeof(file_time), "%Y-%m-%d %T", &tm);
 
 			memset ((void *)&tm, 0, sizeof(tm));
-
 			localtime_r ( &(tran->t_pinfo.pi_stat.st_mtime), &tm);
 			strftime (tran_time, sizeof(tran_time), "%Y-%m-%d %T", &tm);
 
-			printf ("mtime (%s %s= %s)", tran_time,
-				tran->t_pinfo.pi_stat.st_mtime == file_stat.st_mtime ? "=" : "!",
-				file_time);
+		        verbose_transcript (file, tran, &msg,
+					    "mtime (%s %s= %s)", tran_time,
+					    tran->t_pinfo.pi_stat.st_mtime == file_stat.st_mtime ? "=" : "!",
+					    file_time);
 		    }
 
 		    /* Fall through */
@@ -200,28 +157,28 @@ precedent_transcript(const unsigned char *kfile, const unsigned char *file, int 
 		case 'P':
 		case 's':
 	        case 'd': 
-		   if (((file_stat.st_mode & ALLPERMS) != (tran->t_pinfo.pi_stat.st_mode & ALLPERMS)) | (debug > 1)) {
-		        verbose_transcript_header (file, tran, &msg);
-
-		        printf ("mode (%o %s= %o)", (tran->t_pinfo.pi_stat.st_mode & ALLPERMS),
-				(tran->t_pinfo.pi_stat.st_mode & ALLPERMS) == (file_stat.st_mode & ALLPERMS) ? "=" : "!",
-				(file_stat.st_mode & ALLPERMS));
+		   if (((file_stat.st_mode & ALLPERMS) != (tran->t_pinfo.pi_stat.st_mode & ALLPERMS)) || (debug > 1)) {
+		       verbose_transcript (file, tran, &msg, 
+					   "mode (%o %s= %o)",
+					   (tran->t_pinfo.pi_stat.st_mode & ALLPERMS),
+					   (tran->t_pinfo.pi_stat.st_mode & ALLPERMS) == (file_stat.st_mode & ALLPERMS) ? "=" : "!",
+					   (file_stat.st_mode & ALLPERMS));
 		   }
 		
-		   if ((file_stat.st_uid != tran->t_pinfo.pi_stat.st_uid) | (debug > 1)) {
-		        verbose_transcript_header (file, tran, &msg);
-
-		        printf ("uid (%lu %s= %lu)", (long unsigned) tran->t_pinfo.pi_stat.st_uid,
-				tran->t_pinfo.pi_stat.st_uid == file_stat.st_uid ? "=" : "!",
-				(long unsigned) file_stat.st_uid);
+		   if ((file_stat.st_uid != tran->t_pinfo.pi_stat.st_uid) || (debug > 1)) {
+		       verbose_transcript (file, tran, &msg,
+					   "uid (%lu %s= %lu)",
+					   (long unsigned) tran->t_pinfo.pi_stat.st_uid,
+					   tran->t_pinfo.pi_stat.st_uid == file_stat.st_uid ? "=" : "!",
+					   (long unsigned) file_stat.st_uid);
 		    }
 
-		    if ((file_stat.st_gid != tran->t_pinfo.pi_stat.st_gid) | (debug > 1)) {
-		        verbose_transcript_header (file, tran, &msg);
-
-			printf ("gid (%lu %s= %lu)", tran->t_pinfo.pi_stat.st_gid,
-				tran->t_pinfo.pi_stat.st_gid == file_stat.st_gid ? "=" : "!",
-				file_stat.st_gid );
+		    if ((file_stat.st_gid != tran->t_pinfo.pi_stat.st_gid) || (debug > 1)) {
+		        verbose_transcript (file, tran, &msg,
+					    "gid (%lu %s= %lu)",
+					    (unsigned long) tran->t_pinfo.pi_stat.st_gid,
+					    tran->t_pinfo.pi_stat.st_gid == file_stat.st_gid ? "=" : "!",
+					    (unsigned long) file_stat.st_gid );
 		    }
 
 		    break;
@@ -239,31 +196,31 @@ precedent_transcript(const unsigned char *kfile, const unsigned char *file, int 
 	    	switch (tran->t_pinfo.pi_type) {
 		case 'f':
 	    	    if ((file_stat.st_size != tran->t_pinfo.pi_stat.st_size)  || (debug > 1)){
-		        debug_transcript_header (stderr, file, tran, &msg);
-
-		        fprintf (stderr ,"size (%llu %s= %llu)", 
-				 (unsigned long long) tran->t_pinfo.pi_stat.st_size,
-				 tran->t_pinfo.pi_stat.st_size == file_stat.st_size ? "=" : "!",
-				 (unsigned long long) file_stat.st_size);
+		        debug_transcript (stderr, file, tran, &msg,
+					  "size (%llu %s= %llu)", 
+					  (unsigned long long) tran->t_pinfo.pi_stat.st_size,
+					  tran->t_pinfo.pi_stat.st_size == file_stat.st_size ? "=" : "!",
+					  (unsigned long long) file_stat.st_size);
 		    }
 
 		    if ((file_stat.st_mtime != tran->t_pinfo.pi_stat.st_mtime) || (debug > 1)) {
 		    	char file_time[64], tran_time[64];
 			struct tm tm;
 
-		        debug_transcript_header (stderr, file, tran, &msg);
-
+			memset ((void *)&tm, 0, sizeof(tm));
 			localtime_r ( &(file_stat.st_mtime), &tm);
 			strftime (file_time, sizeof(file_time), "%Y-%m-%d %T", &tm);
 
 			memset ((void *)&tm, 0, sizeof(tm));
-
 			localtime_r ( &(tran->t_pinfo.pi_stat.st_mtime), &tm);
 			strftime (tran_time, sizeof(tran_time), "%Y-%m-%d %T", &tm);
 
-			fprintf (stderr, "mtime (%s %s= %s)", tran_time, 
-				 tran->t_pinfo.pi_stat.st_mtime == file_stat.st_mtime ? "=" : "!",
-				 file_time);
+
+		        debug_transcript (stderr, file, tran, &msg,
+					  "mtime (%s %s= %s)",
+					  tran_time, 
+					  tran->t_pinfo.pi_stat.st_mtime == file_stat.st_mtime ? "=" : "!",
+					  file_time);
 		    }
 
 
@@ -272,27 +229,28 @@ precedent_transcript(const unsigned char *kfile, const unsigned char *file, int 
 		case 'd':
 		case 's':
 		    if (((file_stat.st_mode & ALLPERMS) != (tran->t_pinfo.pi_stat.st_mode & ALLPERMS)) || (debug > 1)) {
-		        debug_transcript_header (stderr, file, tran, &msg);
-
-		        fprintf (stderr, "mode (%o %s= %o)", (tran->t_pinfo.pi_stat.st_mode & ALLPERMS),
-				 (tran->t_pinfo.pi_stat.st_mode & ALLPERMS) == (file_stat.st_mode & ALLPERMS) ? "=" : "!",
-				 (file_stat.st_mode & ALLPERMS) );
+		        debug_transcript (stderr, file, tran, &msg,
+					  "mode (%o %s= %o)",
+					  (tran->t_pinfo.pi_stat.st_mode & ALLPERMS),
+					  (tran->t_pinfo.pi_stat.st_mode & ALLPERMS) == (file_stat.st_mode & ALLPERMS) ? "=" : "!",
+					  (file_stat.st_mode & ALLPERMS) );
    		    }
 
 		    if ((file_stat.st_uid != tran->t_pinfo.pi_stat.st_uid) || (debug > 1)) {
-		        debug_transcript_header (stderr, file, tran, &msg);
-
-		        fprintf (stderr, "uid (%lu %s= %lu)", (unsigned long) tran->t_pinfo.pi_stat.st_uid,
-				 tran->t_pinfo.pi_stat.st_uid == file_stat.st_uid ? "=" : "!",
-				 (unsigned long) file_stat.st_uid);
+		        debug_transcript (stderr, file, tran, &msg,
+					  
+					  "uid (%lu %s= %lu)",
+					  (unsigned long) tran->t_pinfo.pi_stat.st_uid,
+					  tran->t_pinfo.pi_stat.st_uid == file_stat.st_uid ? "=" : "!",
+					  (unsigned long) file_stat.st_uid);
 		    }
 
 		    if ((file_stat.st_gid != tran->t_pinfo.pi_stat.st_gid) || (debug > 1)) {
-		        debug_transcript_header (stderr, file, tran, &msg);
-
-		        fprintf (stderr, "gid (%lu %s= %lu)", (unsigned long) tran->t_pinfo.pi_stat.st_gid, 
-				 tran->t_pinfo.pi_stat.st_gid == file_stat.st_gid ? "=" : "!",
-				 (unsigned long) file_stat.st_gid);
+		        debug_transcript (stderr, file, tran, &msg, 
+					  "gid (%lu %s= %lu)", 
+					  (unsigned long) tran->t_pinfo.pi_stat.st_gid, 
+					  tran->t_pinfo.pi_stat.st_gid == file_stat.st_gid ? "=" : "!",
+					  (unsigned long) file_stat.st_gid);
 		    }
 		    break;
 
@@ -369,10 +327,10 @@ static const usageopt_t main_usage[] =
 	      "Not available", "(number)"},
 #endif /* defined(HAVE_ZLIB) */
 
-    { (struct option) { "debug", no_argument, NULL, 'd' },
+    { (struct option) { "debug",	no_argument,	     NULL, 'd' },
       		"Raise debugging level to see what's happening", NULL},
 
-    { (struct option) { "verbose", no_argument, NULL, 'v' },
+    { (struct option) { "verbose",	no_argument,	     NULL, 'v' },
       		"Turn on verbose mode", NULL },
 
     { (struct option) { "version",      no_argument,       NULL, 'V' },
@@ -422,6 +380,10 @@ static const usageopt_t main_usage[] =
     { (struct option) { "diff-options", required_argument, NULL, 'X' },
 	      "Unsupported 'diff' options", "diff-arg"},
 
+    { (struct option) { "tls-options",	required_argument,   NULL, 'O' },
+              "Set OpenSSL/TLS options (like NO_SSLv3), or clear (clear)", NULL }, 
+
+
     /* End of list */
     { (struct option) {(char *) NULL, 0, (int *) NULL, 0}, (char *) NULL, (char *) NULL}
   }; /* end of main_usage[] */
@@ -462,7 +424,7 @@ main( int argc, char **argv, char **envp )
     int                 use_randfile = 0;
     int                 optndx = 0;
     int			tmp_i;
-    struct transcript	*tran;
+    transcript_t	*tran;
     struct option      *main_opts;
     char               *main_optstr;
 
@@ -509,6 +471,23 @@ main( int argc, char **argv, char **envp )
             port = htons( atoi( optarg ));
 	    break;
 
+	case 'O':  /* --tls-options */
+	    if ((strcasecmp(optarg, "none") == 0) || (strcasecmp(optarg, "clear") == 0)) {
+	        tls_options = 0;
+	    }
+	    else {
+	        long new_tls_opt;
+
+		new_tls_opt = tls_str_to_options(optarg);
+		if (new_tls_opt == 0) {
+		    fprintf (stderr, 
+			     "%s: Invalid --tls-options(-O) '%s'\n", progname, optarg);
+		    exit (2);
+		}
+		tls_options |= new_tls_opt;
+	    }
+	    break;
+
         case 'P' :              /* ca dir */
             caDir = optarg;
             break;
@@ -533,7 +512,7 @@ main( int argc, char **argv, char **envp )
 	    printf( "%s\n", version );
 	    exit( 0 );
 
-	case 'v':
+	case 'v':	 /* --verbose */
 	    verbose = 1;
 	    logger = v_logger;
 	    if ( isatty( fileno( stdout ))) {
@@ -686,10 +665,7 @@ main( int argc, char **argv, char **envp )
 	    }
 
 	    if (debug)
-	    	fprintf(stderr,
-			"*debug: Found '%s' in t:['%s'] from k:['%s'] line %lu, ID=%u\n",
-			(char *) file, (char *) tran->t_shortname, (char *) tran->t_kfile,
-			(unsigned long) tran->t_linenum, tran->id);
+	        alert_transcript(NULL, stderr, tran, "Found '%s' in ", file); 
 
 	    /* check for special */
 	    if ( strcmp( (char *) tran->t_shortname, "special.T" ) == 0 ) {

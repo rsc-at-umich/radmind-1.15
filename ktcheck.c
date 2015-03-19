@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2007, 2013, 2014 by the Regents of The University of Michigan.
+ * Copyright (c) 2003, 2007, 2013-2014 by the Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -33,6 +33,7 @@
 #endif /* HAVE_ZLIB */
 
 #include <snet.h>
+#include <sysexits.h>
 
 #include "applefile.h"
 #include "base64.h"
@@ -97,7 +98,7 @@ expand_kfile( llist_t **khead, const filepath_t *kfile )
 
     if (( kf = fopen( (char *) kfile, "r" )) == NULL ) {
         perror( (const char *) kfile );
-	exit( 2 );
+	exit( EX_IOERR );
     }
 
     while ( fgets( buf, MAXPATHLEN, kf ) != NULL ) {
@@ -574,11 +575,7 @@ extern char *optarg;
 extern int optind, opterr, optopt;
 
 /*
- * Command-line options
- *
- * Formerly getopt - "Cc:D:e:h:IiK:np:P:qrvVw:x:y:z:Z:"
- *
- * Remaining opts: ""
+ * Command-line options, and usage help. Table driven!
  */
 
 static const usageopt_t main_usage[] = 
@@ -640,18 +637,23 @@ static const usageopt_t main_usage[] =
 	      "Not available", "(number)"},
 #endif /* defined(HAVE_ZLIB) */
 
-    { (struct option) { "quiet", no_argument, NULL, 'q' },
+    { (struct option) { "quiet",	no_argument,	     NULL, 'q' },
 	      "Suppress messages", NULL},
 
-    { (struct option) { "help",         no_argument,       NULL, 'H' },
-     		"This message", NULL },
-    
-    { (struct option) { "version",      no_argument,       NULL, 'V' },
-     		"show version number, and a list of supported checksumming algorithms in descending order of preference and exits", NULL },
-    
-    { (struct option) { "verbose",           no_argument,       NULL, 'v' },
-     		"Be chatty", NULL },
+    { (struct option) { "help",         no_argument,         NULL, 'H' },
+     	      "This message", NULL },
 
+    { (struct option) { "debug",	no_argument,         NULL, 'd'},
+      		"Raise debugging level to see what's happening", NULL},
+    
+    { (struct option) { "version",      no_argument,         NULL, 'V' },
+     	      "show version number, and a list of supported checksumming algorithms in descending order of preference and exits", NULL },
+    
+    { (struct option) { "verbose",      no_argument,         NULL, 'v' },
+     	      "Be chatty", NULL },
+    
+    { (struct option) { "tls-options",	required_argument,   NULL, 'O' },
+              "Set OpenSSL/TLS options (like NO_SSLv3), or clear (clear)", NULL }, 
 
     /* End of list */
     { (struct option) {(char *) NULL, 0, (int *) NULL, 0}, (char *) NULL, (char *) NULL}
@@ -659,7 +661,7 @@ static const usageopt_t main_usage[] =
 
 
    static void
-   ktcheck_usage (FILE *out, int verbose)
+ktcheck_usage (FILE *out, int verbose)
 {
       usageopt_usage (out, verbose, progname,  main_usage,
 		      "", 80);
@@ -755,6 +757,23 @@ main( int argc, char **argv )
 	    port = htons( atoi( optarg )); 
 	    break;
 	
+	case 'O':  /* --tls-options */
+	    if ((strcasecmp(optarg, "none") == 0) || (strcasecmp(optarg, "clear") == 0)) {
+	        tls_options = 0;
+	    }
+	    else {
+	        long new_tls_opt;
+
+		new_tls_opt = tls_str_to_options(optarg);
+		if (new_tls_opt == 0) {
+		    fprintf (stderr, 
+			     "%s: Invalid --tls-options(-O) '%s'\n", progname, optarg);
+		    exit (2);
+		}
+		tls_options |= new_tls_opt;
+	    }
+	    break;
+
         case 'P' :              /* ca dir */
             caDir = optarg;
             break;

@@ -443,13 +443,13 @@ do_lcksum(const filepath_t *tpath )
 		if ( strcmp( targv[ 7 ], "-" ) != 0) {
 		    /* use mtime from server */
 		    fprintf( ufs, "%s %-37s %4s %5s %5s %9ld "
-			    "%7" PRIofft "d %s\n",
+			    "%7" PRIofft " %s\n",
 			targv[ 0 ], targv[ 1 ], targv[ 2 ], targv[ 3 ],
 			targv[ 4 ], st.st_mtime, st.st_size, lcksum );
 		} else {
 		    /* use mtime from transcript */
 		    fprintf( ufs, "%s %-37s %4s %5s %5s %9s "
-			    "%7" PRIofft "d %s\n",
+			    "%7" PRIofft " %s\n",
 			targv[ 0 ], targv[ 1 ], targv[ 2 ], targv[ 3 ],
 			targv[ 4 ], targv[ 5 ], st.st_size, lcksum );
 		    }

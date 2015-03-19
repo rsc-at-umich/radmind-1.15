@@ -99,6 +99,9 @@ static const usageopt_t main_usage[] =
     { (struct option) { "verbose",           no_argument,       NULL, 'v' },
      		"Be chatty", NULL },
 
+    { (struct option) { "tls-options",	required_argument,   NULL, 'O' },
+              "Set OpenSSL/TLS options (like NO_SSLv3), or clear (clear)", NULL }, 
+
 
     /* End of list */
     { (struct option) {(char *) NULL, 0, (int *) NULL, 0}, (char *) NULL, (char *) NULL}
@@ -155,6 +158,23 @@ main( int argc, char *argv[] )
 	case 'p':
 	    /* connect.c handles things if atoi returns 0 */
             port = htons( atoi( optarg ));
+	    break;
+	
+	case 'O':  /* --tls-options */
+	    if ((strcasecmp(optarg, "none") == 0) || (strcasecmp(optarg, "clear") == 0)) {
+	        tls_options = 0;
+	    }
+	    else {
+	        long new_tls_opt;
+
+		new_tls_opt = tls_str_to_options(optarg);
+		if (new_tls_opt == 0) {
+		    fprintf (stderr, 
+			     "%s: Invalid --tls-options(-O) '%s'\n", progname, optarg);
+		    exit (2);
+		}
+		tls_options |= new_tls_opt;
+	    }
 	    break;
 
 	case 'P':

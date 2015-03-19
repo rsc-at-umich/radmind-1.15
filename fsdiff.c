@@ -17,6 +17,8 @@
 
 #include <openssl/evp.h>
 
+#include <sysexits.h>
+
 #include "applefile.h"
 #include "transcript.h"
 #include "pathcmp.h"
@@ -28,7 +30,8 @@ void            (*logger)( char * ) = NULL;
 
 extern char	*version, *checksumlist;
 
-static void	fs_walk( const unsigned char *, struct stat *, char *, struct applefileinfo *,
+static void	fs_walk( const unsigned char *, struct stat *, char *,
+			 struct applefileinfo *,
 			 int, int, int );
 int		dodots = 0;
 int		dotfd;
@@ -40,7 +43,8 @@ extern int	exclude_warnings;
 const EVP_MD    *md;
 
 static struct fs_list *fs_insert( struct fs_list **, struct fs_list *,
-	const unsigned char *, int (*)( const char *, const char * ));
+				  const unsigned char *,
+				  int (*)( const char *, const char * ));
 
 struct fs_list {
     struct fs_list		*fl_next;
@@ -54,19 +58,20 @@ struct fs_list {
 
     static struct fs_list *
 fs_insert( struct fs_list **head, struct fs_list *last,
-	const unsigned char *name, int (*cmp)( const char *, const char * ))
+	   const unsigned char *name, int (*cmp)( const char *, const char * ))
 {
     struct fs_list	**current, *new;
 
-    if (( last != NULL ) && ( (*cmp)( (const char *) name, (const char *) last->fl_name ) > 0 )) {
-	current = &last->fl_next;
+    if (( last != NULL ) &&
+	( (*cmp)( (const char *) name, (const char *) last->fl_name ) > 0 )) {
+        current = &last->fl_next;
     } else {
 	current = head;
     }
 
     /* find where in the list to put the new entry */
     for ( ; *current != NULL; current = &(*current)->fl_next) {
-      if ( (*cmp)( (const char *) name, (const char *) (*current)->fl_name ) <= 0 ) {
+        if ( (*cmp)( (const char *) name, (const char *) (*current)->fl_name ) <= 0 ) {
 	    break;
 	}
     }
@@ -82,11 +87,13 @@ fs_insert( struct fs_list **head, struct fs_list *last,
     new->fl_next = *current;
     *current = new; 
     return( new ); 
-}
+} /* end of fs_insert() */
+
 
     static void
-fs_walk( const unsigned char *path, struct stat *st, char *p_type, struct applefileinfo *afinfo,
-	int start, int finish, int pdel ) 
+fs_walk( const unsigned char *path, struct stat *st, char *p_type,
+	 struct applefileinfo *afinfo,
+	 int start, int finish, int pdel ) 
 {
     DIR			*dir;
     struct dirent	*de;
@@ -95,8 +102,8 @@ fs_walk( const unsigned char *path, struct stat *st, char *p_type, struct applef
     int			count = 0;
     int			del_parent;
     float		chunk, f = start;
+    transcript_t	*tran = (transcript_t *) NULL;
     unsigned char	temp[ MAXPATHLEN ];
-    struct transcript	*tran;
     int			(*cmp)( const char *, const char * );
 
     if (( finish > 0 ) && ( start != lastpercent )) {
@@ -107,10 +114,12 @@ fs_walk( const unsigned char *path, struct stat *st, char *p_type, struct applef
 
     /* call the transcript code */
     switch ( transcript_check( path, st, p_type, afinfo, pdel )) {
-    case 2 :			/* negative directory */
+    case T_COMP_ISNEG: /* (2) */
 	for (;;) {
 	    tran = transcript_select();
 	    if ( tran->t_eof ) {
+	        if (debug > 1)
+		    alert_transcript (NULL, stderr, tran, "empty transcript");
 		return;
 	    }
 
@@ -124,33 +133,42 @@ fs_walk( const unsigned char *path, struct stat *st, char *p_type, struct applef
 		case 0:
 		    break;
 		case 1:
-		    fprintf( stderr, "%s is of an unknown type\n", (const char *) temp );
-		    exit( 2 );
+		    alert_transcript ("*fatal: in radstat() -", stderr, tran,
+				      "'%s' is of an unknown type\n",
+				      (const char *) temp );
+		    exit( EX_SOFTWARE );
 		    /* UNREACHABLE */
 
 		default:
 		    if (( errno != ENOTDIR ) && ( errno != ENOENT )) {
 		        perror( (const char *)path );
-			exit( 2 );
+			exit( EX_IOERR );
 		    }
 		}
 
+		if (debug > 1)
+		    alert_transcript (NULL, stderr, tran,
+				      "fs_walk() from '%s' to '%s'", path, temp);
+
 		fs_walk( temp, &st0, &type0, &afinfo0, start, finish, pdel );
+
 	    } else {
-		return;
+	        return;
 	    }
 	}
 
-    case 0 :			/* not a directory */
+    case T_COMP_ISFILE:	/* 0 */		/* not a directory */
 	return;
-    case 1 :			/* directory */
+    case T_COMP_ISDIR:	/* 1 */		/* directory */ 
 	if ( skip ) {
 	    return;
 	}
 	break;
     default :
-	fprintf( stderr, "transcript returned an unexpected value!\n" );
-	exit( 2 );
+         fprintf(stderr,
+		 "*fatal: in fs_walk() - transcript_check() returned an unexpected value for '%s'\n",
+		 path);
+	exit( EX_SOFTWARE );
     }
 
     /*
@@ -172,14 +190,14 @@ fs_walk( const unsigned char *path, struct stat *st, char *p_type, struct applef
     }
 
     if ( chdir( (const char *) path ) < 0 ) {
-      perror( (const char *) path );
-	exit( 2 );
+        perror( (const char *) path );
+	exit( EX_DATAERR );
     }
 
     /* open directory */
     if (( dir = opendir( "." )) == NULL ) {
         perror( (const char *) path );
-	exit( 2 );	
+	exit( EX_IOERR );	
     }
 
     /* read contents of directory */
@@ -195,7 +213,7 @@ fs_walk( const unsigned char *path, struct stat *st, char *p_type, struct applef
 
 	if (( new = fs_insert( &head, new, (unsigned char *) de->d_name, cmp )) == NULL ) {
 	    perror( "malloc" );
-	    exit( 1 );
+	    exit( EX_SOFTWARE );
 	}
 
 	switch ( radstat( new->fl_name, &new->fl_stat, &new->fl_type,
@@ -205,25 +223,25 @@ fs_walk( const unsigned char *path, struct stat *st, char *p_type, struct applef
 
 	case 1:
 	    fprintf( stderr, "%s is of an unknown type\n", path );
-	    exit( 2 );
+	    exit( EX_SOFTWARE );
 	    /* UNREACHABLE */
 
 	default:
 	    if (( errno != ENOTDIR ) && ( errno != ENOENT )) {
 	        perror( (char *) path );
-		exit( 2 );
+		exit( EX_IOERR );
 	    }
 	}
     }
 
     if ( closedir( dir ) != 0 ) {
 	perror( "closedir" );
-	exit( 2 );
+	exit( EX_OSERR );
     }
 
     if ( fchdir( dotfd ) < 0 ) {
 	perror( "OOPS!" );
-	exit( 2 );
+	exit( EX_OSERR );
     }
 
     chunk = (( finish - start ) / ( float )count );
@@ -233,16 +251,20 @@ fs_walk( const unsigned char *path, struct stat *st, char *p_type, struct applef
     /* call fswalk on each element in the sorted list */
     for ( cur = head; cur != NULL; cur = next ) {
 	if ( path[ len - 1 ] == '/' ) {
-	  if ( snprintf( (char *) temp, MAXPATHLEN, "%s%s", (const char *) path, (const char *) cur->fl_name )
-		    >= MAXPATHLEN ) {
-	    fprintf( stderr, "%s%s: path too long\n", (const char *) path, (const char *) cur->fl_name );
-		exit( 2 );
-	    }
+	    if ( snprintf( (char *) temp, MAXPATHLEN,
+			   "%s%s", (const char *) path, (const char *) cur->fl_name )
+		 >= MAXPATHLEN ) {
+	        fprintf( stderr, "%s%s: path too long\n",
+			 (const char *) path, (const char *) cur->fl_name );
+		exit( EX_DATAERR );
+	  }
 	} else {
-	  if ( snprintf( (char *) temp, MAXPATHLEN, "%s/%s", (const char *) path, (const char *) cur->fl_name )
-		    >= MAXPATHLEN ) {
-	    fprintf( stderr, "%s/%s: path too long\n", (const char *) path, (const char *) cur->fl_name );
-                exit( 2 );
+	    if ( snprintf( (char *) temp, MAXPATHLEN,
+			   "%s/%s", (const char *) path, (const char *) cur->fl_name )
+		 >= MAXPATHLEN ) {
+	        fprintf( stderr, "%s/%s: path too long\n",
+			 (const char *) path, (const char *) cur->fl_name );
+                exit( EX_DATAERR);
             }
 	}
 
@@ -257,7 +279,7 @@ fs_walk( const unsigned char *path, struct stat *st, char *p_type, struct applef
     }
 
     return;
-}
+} /* end of fs_walk() */
 
 
 extern char *optarg;
@@ -319,6 +341,9 @@ static const usageopt_t main_usage[] =
     { (struct option) { NULL,           no_argument,       NULL, 'v' },
       		"Same as -%", NULL },
 
+    { (struct option) { "verbose",	no_argument,	   NULL, 'Q' },
+      		"Turn up verbose mode", NULL },
+
 
     /* End of list */
     { (struct option) {(char *) NULL, 0, (int *) NULL, 0}, (char *) NULL, (char *) NULL}
@@ -372,6 +397,10 @@ main( int argc, char **argv )
 	case '%':
 	case 'v':
 	    finish = 100;
+	    break;
+
+	case 'Q':	/* --verbose */
+	    verbose ++;
 	    break;
 
 	case 'c':

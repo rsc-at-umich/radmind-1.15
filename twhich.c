@@ -76,8 +76,8 @@ twhich( const filepath_t *pattern, int displayall )
 	/* Skip NULL/empty transcripts */
 	if ( tran->t_eof ) {
 	    if (debug)
-	    	fprintf (stderr, "*debug: exhausted transcript t:['%s'] from k:['%s'] line %d\n",
-			tran->t_shortname, tran->t_kfile, tran->t_linenum);
+	        alert_transcript (NULL, stderr, tran, "exhausted transcript");
+
 	    continue;
 	}
 
@@ -90,15 +90,15 @@ twhich( const filepath_t *pattern, int displayall )
 	}
 	if ( tran->t_eof ) {
 	    if (debug)
-	    	fprintf (stderr, "*debug: pattern '%s' not found (EOF) in t:['%s'] from k:['%s']\n",
-			pattern, tran->t_shortname, tran->t_kfile);
+	        alert_transcript (NULL, stderr, tran,
+				  "pattern '%s' not found (EOF) in", pattern);
 	    continue;
 	}
 
 	if ( cmp > 0 ) {
 	    if (debug)
-	    	fprintf (stderr, "*debug: pattern '%s' not found in t:['%s'] from k:['%s'] line %d\n",
-			pattern, tran->t_shortname, tran->t_kfile, tran->t_linenum);
+	        alert_transcript (NULL, stderr, tran, 
+				  "pattern '%s' not found in", pattern);
 	    continue;
 	}
 
@@ -156,6 +156,9 @@ extern int optind, opterr, optopt;
  * Formerly getopt - "adIK:rsV"
  */
 
+/* stringify something */
+#define _STR(x) #x
+
 static const usageopt_t main_usage[] = 
   {
     { (struct option) { "all",   no_argument,             NULL, 'a' }, 
@@ -184,6 +187,10 @@ static const usageopt_t main_usage[] =
     
     { (struct option) { "version",      no_argument,       NULL, 'V' },
      		"show version number and exits", NULL },
+    
+    { (struct option) { "verbose",	no_argument,	   NULL, 'Q' },
+      		"Turn up verbose mode", NULL },
+
     
     /* End of list */
     { (struct option) {(char *) NULL, 0, (int *) NULL, 0}, (char *) NULL, (char *) NULL}
@@ -229,6 +236,10 @@ main( int argc, char **argv )
 
 	case 'd':
 	    debug++;
+	    break;
+
+	case 'Q': /* --verbose */
+	    verbose ++;
 	    break;
 
 	case 'K':

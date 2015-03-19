@@ -18,6 +18,7 @@
 
 #  include <unistd.h>
 #  include <getopt.h>
+#  include <stdarg.h>
 
 #  define STRINGIFY(s) _X_STRINGIFY(s)
 #  define _X_STRINGIFY(s) #s
@@ -39,9 +40,27 @@ typedef struct
  */
 
 extern int            usageopt_is_last_option (const usageopt_t *usageopts);
-extern struct option *usageopt_option_new ( const usageopt_t *usageopts, char **p_optstr);
-extern void           usageopt_usage (FILE *out, unsigned int verbose, const char *progname, const usageopt_t *usageopts, const char *extra, unsigned int termwidth);
 
+extern struct option *usageopt_option_new ( const usageopt_t *usageopts,
+					    char **p_optstr);
+
+extern void           usageopt_usage (FILE *out, unsigned int verbose,
+				      const char *progname,
+				      const usageopt_t *usageopts,
+				      const char *extra, unsigned int termwidth);
+
+extern void           usageopt_usagef ( FILE *out, unsigned int verbose,
+					const char *progname, 
+					const usageopt_t *usageopts,
+					unsigned int termwidth,
+					const char *fmt, ...);
+
+extern void	      vusageopt_usagef (FILE *out, unsigned int verbose,
+					const char *progname, 
+					const usageopt_t *usageopts,
+					unsigned int  termwidth,
+					const char *fmt,
+					va_list ap);
 
 /* Odd little utility routine. */
 
