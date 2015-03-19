@@ -1,14 +1,15 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2015 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
-struct syslogname {
-    char        *sl_name;
-    int         sl_value;
-};
 
-extern struct syslogname        _syslogfacility[], _sysloglevel[];
-int                             syslogname( char *, struct syslogname * );
+#if !defined(_LOGNAME_H)
+#  define _LOGNAME_H "$Id$"
 
-#define syslogfacility(x)       syslogname((x),_syslogfacility)
-#define sysloglevel(x)          syslogname((x),_sysloglevel)
+/*
+ * Return SYSLOG facility or level - or -1 on error. 
+ */
+extern int syslogfacility (const char *logname);
+extern int sysloglevel (const char *loglevel);
+
+#endif /* _LOGNAME_H */

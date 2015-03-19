@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2015 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -10,7 +10,20 @@
 
 #include "logname.h"
 
-struct syslogname	_sysloglevel[] = {
+typedef struct {
+    const char *sl_name;
+    int         sl_value;
+} name_to_int_t;
+
+#if 0
+extern const struct syslogname  _syslogfacility[], _sysloglevel[];
+int                             syslogname( const char *restrict name, 
+					    const struct syslogname *restrict sln );
+#endif /* 0 */
+
+static int name_to_int (const char *name, const name_to_int_t *table);
+
+static const name_to_int_t _sysloglevel[] = {
     { "emerg",          LOG_EMERG },
     { "alert",          LOG_ALERT },
     { "crit",           LOG_CRIT },
@@ -19,10 +32,11 @@ struct syslogname	_sysloglevel[] = {
     { "notice",         LOG_NOTICE },
     { "info",           LOG_INFO },
     { "debug",          LOG_DEBUG },
-    { 0,                0 },
+    /* end-of-list */
+    { (char *) NULL,   0 },
 };
 
-struct syslogname 	_syslogfacility[] = {
+static const name_to_int_t _syslogfacility[] = {
 #ifdef LOG_KERN
     { "kern",		LOG_KERN },
 #endif // LOG_KERN
@@ -49,16 +63,31 @@ struct syslogname 	_syslogfacility[] = {
     { "local5",		LOG_LOCAL5 },
     { "local6",		LOG_LOCAL6 },
     { "local7",		LOG_LOCAL7 },
-    { 0,		0 },
+    /* end-of-list */
+    { (char *) NULL,	0 },
 };
 
-    int
-syslogname( char *name, struct syslogname *sln )
+static int
+name_to_int( const char *name, const name_to_int_t *table )
 {
-    for ( ; sln->sl_name != 0; sln++ ) {
-	if ( strcasecmp( sln->sl_name, name ) == 0 ) {
-	    return( sln->sl_value );
+    if (name != (char *) NULL) {
+      for ( ; table->sl_name != 0; table++ ) {
+	if ( strcasecmp( table->sl_name, name ) == 0 ) {
+	    return( table->sl_value );
 	}
+      }
     }
     return( -1 );
+} /* end of name_to_int() */
+
+int
+syslogfacility (const char *logname)
+{
+    return name_to_int(logname, _syslogfacility);
 }
+
+int
+sysloglevel (const char *loglevel)
+{
+  return name_to_int(loglevel, _sysloglevel);
+} /* end of sysloglevel() */

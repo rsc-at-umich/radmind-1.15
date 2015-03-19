@@ -228,6 +228,10 @@ static const usageopt_t main_usage[] =
     { (struct option) { "tls-options",	required_argument,   NULL, 'O' },
               "Set OpenSSL/TLS options (like NO_SSLv3), or clear (clear)", NULL }, 
 
+    { (struct option) { "tls-cipher-suite", required_argument, NULL, 'S' },
+              "Set OpenSSL/TLS Cipher Suite", "string" },
+ 
+
     /* End of list */
     { (struct option) {(char *) NULL, 0, (int *) NULL, 0},
       	      (char *) NULL, (char *) NULL}
@@ -392,13 +396,33 @@ main( int ac, char **av )
 	    else {
 	        long new_tls_opt;
 
-		new_tls_opt = tls_str_to_options(optarg);
+		new_tls_opt = tls_str_to_options(optarg, tls_options);
 		if (new_tls_opt == 0) {
 		    usageopt_usagef (stderr, 0, progname, main_usage, 80,
 				   "\n--tls-options(-O) Invalid '%s'\n", optarg);
 		    exit (EX_USAGE);
 		}
-		tls_options |= new_tls_opt;
+		tls_options = new_tls_opt;
+	    }
+	    break;
+
+	case 'S':   /* --tls-cipher-suite <string> */
+	    if ((strcasecmp(optarg, "none") == 0) || (strcasecmp(optarg, "clear") == 0)) {
+	        tls_cipher_suite = "DEFAULT";
+	    } 
+	    else if (strcasecmp(optarg, "default") == 0) {
+	      tls_cipher_suite =  RADMIND_DEFAULT_TLS_CIPHER_SUITES;
+	    }
+	    else {
+	         char *new;
+		 size_t len = strlen (optarg) + strlen(RADMIND_DEFAULT_TLS_CIPHER_SUITES) + 2;
+		 
+		 new = (char *) malloc (len);
+		 strcpy (new, RADMIND_DEFAULT_TLS_CIPHER_SUITES);
+		 strcat (new, ":");
+		 strcat (new, optarg);
+
+		 tls_cipher_suite = new;
 	    }
 	    break;
 
@@ -611,14 +635,14 @@ main( int ac, char **av )
     if ( setsockopt( s, SOL_SOCKET, SO_REUSEADDR, (void*) &trueint, 
 	    sizeof(int)) < 0 ) {
         fprintf(stderr, 
-		"%s: setsockopt(%d, SOL_SOCKET, SO_REUSEADDR, ..., %lu) failed, errno %d: %s\n", 
+		"%s: setsockopt(%d, SOL_SOCKET, SO_REUSEADDR, ..., %zu) failed, errno %d: %s\n", 
 		progname, s, sizeof(int), errno, strerror(errno));
 	exit( EX_IOERR );
     }
 
     if ( bind( s, (struct sockaddr *)&sin, sizeof( struct sockaddr_in )) < 0 ) {
         fprintf(stderr, 
-		"%s: bind (%d, .., %lu) failed, errno %d: %s\n", 
+		"%s: bind (%d, .., %zu) failed, errno %d: %s\n", 
 		progname, s, sizeof(struct sockaddr_in), errno,  strerror(errno));
 	exit( EX_IOERR );
     }

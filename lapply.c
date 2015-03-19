@@ -63,6 +63,8 @@ extern off_t	lsize;
 const EVP_MD    *md;
 SSL_CTX  	*ctx;
 
+int		debug = 0;
+
 extern char             *caFile, *caDir, *cert, *privatekey;
 
 typedef struct apply_node apply_node_t;

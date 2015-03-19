@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2014 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2014-2015 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -48,7 +48,7 @@ merge_node_create( const filepath_t *path )
     merge_node_t         *new_node;
 
     if (( new_node = (merge_node_t *) malloc( sizeof( merge_node_t ))) == NULL ) {
-	perror( "malloc" );
+	perror( "merge_node_create: malloc(merge_node_t)" );
 	return( NULL );
     }
     if ( filepath_len( path ) >= MAXPATHLEN ) {

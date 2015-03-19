@@ -3,6 +3,10 @@
  * All Rights Reserved.  See COPYRIGHT.
  */
 
+/*
+ * THIS FILE IS OBSOLETE AND UNUSED -- 2015-02-21 rsc@umich.edu 
+*/
+#if 0
 struct tran 
 {
     int			num;
@@ -22,3 +26,4 @@ struct tran
     struct node 	*next;
 };
 int getnextline( struct tran *tran ); 
+#endif /* 0 */

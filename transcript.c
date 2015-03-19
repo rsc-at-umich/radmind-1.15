@@ -1051,23 +1051,24 @@ t_new( int type, const filepath_t *fullname, const filepath_t *shortname, const 
 		int save_errno = errno;
 
 		fprintf (stderr, 
-			 "ERROR: Unable to allocate transcript buffer size %ul for '%s', error %d: %s\n",
+			 "ERROR: Unable to allocate transcript buffer size %zu for '%s', error %d: %s\n",
 			 
-			 (unsigned long) buflen, (char *) fullname,
+			 buflen, (char *) fullname,
 			 save_errno, strerror (save_errno));
 		fprintf (stderr, "ERROR: Buffering turned off\n");
 		transcript_buffer_size = 0;
 	      }
 	      else {
 		if (debug > 4)
-			fprintf (stderr, "*debug: t_new() - calloc(1, %lu) returns 0x%p\n",
-					buflen, new->buffered);
+			fprintf (stderr,
+				 "*debug: t_new() - calloc(1, %zu) returns 0x%p\n",
+				 buflen, new->buffered);
 
 		got = read (fileno(new->t_in), new->buffered, buflen);
 
 		if (got != (buflen-1)) {
 		    fprintf (stderr,
-			     "FATAL ERROR: Didn't read entire transcript ('%s') at once, %lld of %llu\n",
+			     "FATAL ERROR: Didn't read entire transcript ('%s') at once, %zd of %zu\n",
 			     fullname, got, buflen);
 		    exit (EX_IOERR);
 		}

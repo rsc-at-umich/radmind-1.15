@@ -41,7 +41,7 @@ int _randfile( void );
 extern int		verbose;
 extern SSL_CTX		*ctx;
 extern struct timeval	timeout;
-
+extern int              debug;
 char 			*caFile = NULL;
 char 			*caDir = NULL;
 char 			*crlFile = NULL;
@@ -51,6 +51,8 @@ char 			*privatekey = _RADMIND_TLS_CERT;
 
 /* SSLv2 and SSLv3 are both compromised. It's TLS1xxx now */
 long			 tls_options = (long) (SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
+
+char                    *tls_cipher_suite = RADMIND_DEFAULT_TLS_CIPHER_SUITES;
 
 typedef struct tls_option_name_struct {
     char *name;
@@ -138,6 +140,12 @@ tls_server_setup( int use_randfile, int authlevel,
         SSL_CTX_set_options (ctx, tls_options);
     }
         
+    if (!SSL_CTX_set_cipher_list (ctx, tls_cipher_suite)) {
+	fprintf(stderr, "SSL_CTX_set_cipher_list(..., \"%s\") failed: %s\n",
+		tls_cipher_suite, ERR_error_string(ERR_get_error(), NULL));
+	return (-1);
+    }
+
     if ( SSL_CTX_use_PrivateKey_file( ctx, privatekey,
 	    SSL_FILETYPE_PEM ) != 1 ) {
 	fprintf( stderr, "SSL_CTX_use_PrivateKey_file: %s: %s\n",
@@ -261,6 +269,12 @@ tls_client_setup( int use_randfile, int authlevel,
 
     if (tls_options != 0) {
         SSL_CTX_set_options (ctx, tls_options);
+    }
+
+    if (!SSL_CTX_set_cipher_list (ctx, tls_cipher_suite)) {
+	fprintf(stderr, "SSL_CTX_set_cipher_list(..., \"%s\") failed: %s\n",
+		tls_cipher_suite, ERR_error_string(ERR_get_error(), NULL));
+	return (-1);
     }
 
     if ( authlevel == 2 ) {
@@ -477,14 +491,15 @@ tls_client_start( SNET *sn, const char *host, int authlevel )
 
 
     long
-tls_str_to_options (const char *str)
+tls_str_to_options (const char *str, long init_tls_options)
 {
     char buffer[60];  /* A temporary buffer */
     size_t pos;
     const char *original = str;
     const tls_option_name_t *ssl_opt; /* Loop index. */
-    long  to_opt = 0;	/* Return value */
+    long  to_opt = init_tls_options;	/* Return value */
     const char _func[] = "tls_str_to_options";
+    char  posneg;
 
     
     if ((str == (char *) NULL)  || (! *str))
@@ -521,20 +536,42 @@ tls_str_to_options (const char *str)
     }
 
     /* Process 'str' to identify options separated by '|', '+', or ',' */
-    while (*str) {
-        pos = strcspn (str, "+|,");  
-	if (pos == 0) {
-	    fprintf (stderr,
-		     "%s(\"%s\") - Invalid character at '%c'\n",
-		     _func, original, *str);
-	    errno = EINVAL;
+    posneg = '+';
 
-	    return (0);
+    while (*str) {
+
+	if (debug > 0) {
+	    char temp[256];
+
+	    fprintf(stderr, "%s()-debug: is str='%s', posneg='%c', to_opt=0x%lx (%s)\n",
+		   _func, str, posneg, to_opt, tls_options_to_str(temp, sizeof(temp), to_opt));
+	}
+
+        pos = strcspn (str, "-+|,");  
+	if (pos == 0) {
+	    switch (*str) {
+	    case '+':
+	    case '|':
+	    case ',':
+		posneg = '+';
+	        break;
+
+	    case '-':
+	    case '!':
+		posneg = '-';
+		break;
+
+	    default:
+		fprintf (stderr, "%s(): Unsupported character at #%zu, '%c'\n", _func, pos, *str);
+		return (0);
+	    }
+	    str++;
+	    continue;  /* Now that 'posneg' is set. */
 	}
 
 	if (pos > (sizeof(buffer)-1) ) {
 	    fprintf (stderr, 
-		     "%s(\"%s\") - Length of '%.5s...' too long, %lu > %lu\n",
+		     "%s(\"%s\") - Length of '%.5s...' too long, %zu > %zu\n",
 		     _func, original, str, pos, sizeof(buffer)-1);
 	    errno = EINVAL;
 	    return (0);
@@ -542,11 +579,21 @@ tls_str_to_options (const char *str)
 
 	memcpy (buffer, str, pos);
 	buffer[pos] = '\0';
-
-	/* Point past special characters, but not end-of-line */
 	str += pos;
-	if (*str) {
-	    str++;
+
+	if ((strcasecmp(buffer, "current") == 0) || (strcasecmp(buffer, "cur") == 0)) {
+	   switch (posneg) {
+	   case '+':
+		to_opt |= tls_options;
+		break;
+
+	   case '-':
+		to_opt &= ~tls_options;
+		break;
+
+	   } /* switch (posneg) */
+	   posneg = '+';
+	   continue;
 	}
 
 	/* Search for option. */
@@ -554,10 +601,28 @@ tls_str_to_options (const char *str)
 	    ssl_opt->name != (char *) NULL; ssl_opt++) {
 	    if (strcasecmp(ssl_opt->name, buffer) == 0) {
 	        pos = 0;  /* Flag to indicate it's been found */
-		to_opt |= ssl_opt->val;
-		break;
+		switch (posneg) {
+		case '+':
+		    to_opt |= ssl_opt->val;
+		    break;
+
+		case '-':
+		    to_opt &= ~ (ssl_opt->val);
+		    break;
+
+		default:
+		    continue;
+		} /* switch */
+		break;  /* end of for() loop */
 	    }
  	}
+
+	if (debug > 0) {
+	    char temp[256];
+
+	    fprintf(stderr, "%s()-debug: now str='%s', to_opt=0x%lx (%s)\n",
+		   _func, str, to_opt, tls_options_to_str(temp, sizeof(temp), to_opt));
+	}
 
 	/* Check to see if not found */
 	if (pos != 0) {
@@ -568,7 +633,16 @@ tls_str_to_options (const char *str)
 
 	    return (0);
 	}
+
+	posneg = '+';  /* Restore to default */
     } /* while (*str) */
+
+    if (debug > 0) {
+	char temp[256];
+
+	fprintf(stderr, "%s()-debug: returns 0x%lx (%s)\n",
+		_func, to_opt, tls_options_to_str(temp, sizeof(temp), to_opt));
+    }
 
     return to_opt;
 } /* end of tls_str_to_options() */
@@ -620,3 +694,4 @@ tls_options_to_str (char *buffer, size_t len, long opts)
 
     return buffer;
 } /* end of tls_options_to_str() */
+

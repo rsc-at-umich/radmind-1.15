@@ -104,7 +104,8 @@ usageopt_option_new (const usageopt_t *list, char **p_optstr)
      }
 
 #if defined(_LOGERROR_H)
-     debug (2, _func, __FILE__, __LINE__, "Creating %d options of size %u", size_list, sizeof(*new));
+     debug (2, _func, __FILE__, __LINE__,
+	    "Creating %d options of size %zu", size_list, sizeof(*new));
 #endif /* defined(_LOGERROR_H) */
 
      new = calloc (size_list + 1, sizeof (*new));  /* With an extra, empty one at the end. */
@@ -119,7 +120,8 @@ usageopt_option_new (const usageopt_t *list, char **p_optstr)
 
      if (! new) {
 #if defined(_LOGERROR_H)
-	 error (0, _func, __FILE__, __LINE__, "calloc (%u, %u) FAILED", size_list + 1, sizeof(*new));
+	 error (0, _func, __FILE__, __LINE__, 
+		"calloc (%d, %zu) FAILED", size_list + 1, sizeof(*new));
 #endif /* _LOGERROR_H */
 	 return ((struct option *) NULL);
      }

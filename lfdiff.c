@@ -383,6 +383,9 @@ static const usageopt_t main_usage[] =
     { (struct option) { "tls-options",	required_argument,   NULL, 'O' },
               "Set OpenSSL/TLS options (like NO_SSLv3), or clear (clear)", NULL }, 
 
+    { (struct option) { "tls-cipher-suite", required_argument, NULL, 'R' },
+              "Set OpenSSL/TLS Cipher Suite", "string" },
+ 
 
     /* End of list */
     { (struct option) {(char *) NULL, 0, (int *) NULL, 0}, (char *) NULL, (char *) NULL}
@@ -478,13 +481,33 @@ main( int argc, char **argv, char **envp )
 	    else {
 	        long new_tls_opt;
 
-		new_tls_opt = tls_str_to_options(optarg);
+		new_tls_opt = tls_str_to_options(optarg, tls_options);
 		if (new_tls_opt == 0) {
 		    fprintf (stderr, 
 			     "%s: Invalid --tls-options(-O) '%s'\n", progname, optarg);
 		    exit (2);
 		}
-		tls_options |= new_tls_opt;
+		tls_options = new_tls_opt;
+	    }
+	    break;
+
+	case 'R':   /* --tls-cipher-suite <string> */
+	    if ((strcasecmp(optarg, "none") == 0) || (strcasecmp(optarg, "clear") == 0)) {
+	         tls_cipher_suite = "DEFAULT";
+	    } 
+	    else if (strcasecmp(optarg, "default") == 0) {
+	         tls_cipher_suite =  RADMIND_DEFAULT_TLS_CIPHER_SUITES;
+	    }
+	    else {
+	         char *new;
+		 size_t len = strlen (optarg) + strlen(RADMIND_DEFAULT_TLS_CIPHER_SUITES) + 2;
+		 
+		 new = (char *) malloc (len);
+		 strcpy (new, RADMIND_DEFAULT_TLS_CIPHER_SUITES);
+		 strcat (new, ":");
+		 strcat (new, optarg);
+
+		 tls_cipher_suite = new;
 	    }
 	    break;
 
