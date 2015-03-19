@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2014 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -27,15 +27,18 @@
 #include "largefile.h"
 #include "progress.h"
 #include "root.h"
+#include "usageopt.h"
 
-int		cksum = 0;
-int		verbose = 1;
-int		amode = R_OK | W_OK;
-int		case_sensitive = 1;
-int		checkall = 0;
-int		checkapplefile = 0;
-int		updatetran = 1;
-char		*prefix = NULL;
+int	cksum = 0;
+int	verbose = 1;
+int	debug = 0;
+int	amode = R_OK | W_OK;
+int	case_sensitive = 1;
+int	checkall = 0;
+int	checkapplefile = 0;
+int	updatetran = 1;
+char	*prefix = NULL;
+char	*progname = "lcksum";
 filepath_t	*radmind_path = (filepath_t *) _RADMIND_PATH;
 const EVP_MD	*md;
 extern off_t	lsize, total;
@@ -509,14 +512,82 @@ badline:
     }
 }
 
+
+
+extern char *optarg;
+extern int optind, opterr, optopt;
+
+/*
+ * Command-line options
+ *
+ * Formerly getopt - "%Aac:D:iInP:qV"
+ * Remaining ""
+ */
+
+static const usageopt_t main_usage[] = 
+  {
+    { (struct option) { "progress", no_argument,  NULL, '%' },
+      "Progress output", NULL },
+
+    { (struct option) { "check-all",     no_argument, NULL, 'a' },
+      "Continue checking on error.  Requires -n option", NULL },
+
+    { (struct option) { "apple",      no_argument, NULL, 'p'},
+      "Verify AppleSingle headers.", NULL },
+
+    { (struct option) { "checksum",     required_argument, NULL, 'c' },
+      "specify checksum type",  "checksum-type: [sha1,etc]" },
+
+    { (struct option) { "radmind-directory",  required_argument, NULL, 'D' },
+	      "Specifiy the radmind working directory, by default "
+      		_RADMIND_PATH, "pathname"},
+
+    { (struct option) { "line-buffering", no_argument, NULL, 'i' },
+	      "Force line buffering", NULL},
+
+    { (struct option) { "case-insensitive", no_argument,   NULL, 'I' },
+     		"case insensitive when comparing paths", NULL },
+
+    { (struct option) { "nochange", no_argument, NULL, 'n' },
+	      "verify but do not modify transcript", NULL},
+
+    { (struct option) { "debug", no_argument, NULL, 'd' },
+      		"Raise debugging level to see what's happening", NULL},
+
+    { (struct option) { "verbose", no_argument, NULL, 'v' },
+      		"Turn on verbose mode", NULL },
+
+    { (struct option) { "help",         no_argument,       NULL, 'H' },
+     		"This message", NULL },
+    
+    { (struct option) { "version",      no_argument,       NULL, 'V' },
+     		"show version and list of supported checksums in order of preference", NULL },
+    
+
+    /* End of list */
+    { (struct option) {(char *) NULL, 0, (int *) NULL, 0}, (char *) NULL, (char *) NULL}
+  }; /* end of main_usage[] */
+
+/* Main */
+
     int
 main( int argc, char **argv )
 {
     int			c, i, err = 0;
-    extern int          optind;
+    int                 optndx = 0;
     filepath_t		*tpath = NULL;
+    struct option      *main_opts;
+    char               *main_optstr;
 
-    while (( c = getopt( argc, argv, "%Aac:D:iInP:qV" )) != EOF ) {
+    /* Get our name from argv[0] */
+    for (main_optstr = argv[0]; *main_optstr; main_optstr++) {
+        if (*main_optstr == '/')
+	    progname = main_optstr+1;
+    }
+
+    main_opts = usageopt_option_new (main_usage, &main_optstr);
+
+    while (( c = getopt_long (argc, argv, main_optstr, main_opts, &optndx)) != -1) {
 	switch( c ) {
 	case 'a':
 	    checkall = 1;
@@ -534,7 +605,11 @@ main( int argc, char **argv )
 	    OpenSSL_add_all_digests();
 	    md = EVP_get_digestbyname( optarg );
 	    if ( !md ) {
-		fprintf( stderr, "%s: unsupported checksum\n", optarg );
+		
+	        usageopt_usage (stderr, 0 /* not verbose */, progname,  main_usage,
+				"<transcript>", 80);
+		fprintf( stderr, "%s: unsupported checksum '%s'\n", progname, optarg );
+		
 		exit( 2 );
 	    }
 	    cksum = 1;  
@@ -549,7 +624,7 @@ main( int argc, char **argv )
 	    break;
 
 	case 'D':
-	  radmind_path = (filepath_t *) optarg;
+	    radmind_path = (filepath_t *) optarg;
 	    break;
 
 	case 'P':
@@ -565,10 +640,24 @@ main( int argc, char **argv )
 	    verbose = 0;
 	    break;
 
+	case 'v':
+	    verbose++ ;
+	    break;
+
 	case 'V':
 	    printf( "%s\n", version );
 	    printf( "%s\n", checksumlist );
 	    exit( 0 );
+
+	case 'd':
+	    debug++;
+	    break;
+
+	case 'H':  /* --help */
+	  usageopt_usage (stdout, 1 /* verbose */, progname,  main_usage,
+			  "<transcript>", 80);
+	  exit (0);
+
 
 	case '?':
 	    err++;
@@ -589,11 +678,8 @@ main( int argc, char **argv )
     }
 
     if ( err || (( argc - optind ) == 0 )) {
-	fprintf( stderr, "usage: %s [ -%%AiIqV ] ", argv[ 0 ] );
-	fprintf( stderr, "[ -D path ] " );
-	fprintf( stderr, "[ -n [ -a ] ] " );
-	fprintf( stderr, "[ -P prefix ] " );
-	fprintf( stderr, "-c checksum transcript\n" );
+	usageopt_usage (stderr, 0 /* not verbose */, progname,  main_usage,
+			  "<transcript>", 80);
 	exit( 2 );
     }
 

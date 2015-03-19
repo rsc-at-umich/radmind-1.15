@@ -31,8 +31,6 @@
 #  include "logerror.h"
 #endif
 
-int usageopt_debug = 0;
-
 /*
  * Procedures
  */
@@ -69,7 +67,9 @@ usageopt_is_last_option (const usageopt_t *help)
 struct option *
 usageopt_option_new (const usageopt_t *list, char **p_optstr)
 {
+#if defined(_LOGERROR_H)
      static char     _func[] = "usageopt_option_new";
+#endif /* _LOGERROR_H */
      int             size_list;
      int	     size_optstr = 0;
      int	     optndx;	
@@ -83,40 +83,9 @@ usageopt_option_new (const usageopt_t *list, char **p_optstr)
      /* Determine the size of the options. */
      for (size_list = 0, each = list; ! usageopt_is_last_option(each); each++)
        {
-	 if (each->longopt.name != (char *) NULL)
-	   {
-	     size_list ++;
-	   }
-
-	 if (usageopt_debug > 0) 
-	   {
-	     fprintf (stderr,
-		      "%s(%p, %p) - size_list=%d, size_optstr=%d\n",
-		      _func, list, p_optstr, size_list, size_optstr);
-
-	     fprintf (stderr, "...\t: each=%p { longopt={val='%c' (#%d), has_arg=%d, name=\"%s\"}}\n",
-		      each, each->longopt.val, each->longopt.val, each->longopt.has_arg,
-		      each->longopt.name ? each->longopt.name : "(null)" );
-	   }
-
+	 size_list ++;
 	 if (each->longopt.val != '\0')
 	   {
-	     const usageopt_t *check;
-	     
-	     /* Check for duplicates. */
-	     for (check = list; check != each; check++ )
-	       {
-		 if (check->longopt.val == each->longopt.val)
-		   {
-		     fprintf (stderr,
-			      "%s(): Internal error, duplicate longopt.val='%c', \"%s\" and \"%s\"\n",
-			      _func, each->longopt.val, 
-			      each->longopt.name ? each->longopt.name : "(null)",
-			      check->longopt.name ? check->longopt.name : "(null)");
-		     return ((struct option *) NULL);
-		   }
-	       }
-
 	     size_optstr ++;
 	     switch (each->longopt.has_arg)
 	       {
@@ -158,38 +127,30 @@ usageopt_option_new (const usageopt_t *list, char **p_optstr)
 	 return ((struct option *) NULL);
        }
 
-     for (optndx = 0, put = new, each = list;
-	  ! usageopt_is_last_option(each);
-	  each++, optndx++)
+     for (optndx = 0, put = new, each = list; ! usageopt_is_last_option(each); each++, put++, optndx++)
        {
-	 if (each->longopt.name != (char *) NULL) 
-	   {
-	     memcpy ((void *) put, (void *) &(each->longopt), sizeof (*put));
+	 memcpy ((void *) put, (void *) &(each->longopt), sizeof (*put));
 
 #if defined(_LOGERROR_H)
-	     debug (2, _func, __FILE__, __LINE__, "Option #%d: -%c, --%s",
-		    optndx, each->longopt.val, each->longopt.name);
+	 debug (2, _func, __FILE__, __LINE__, "Option #%d: -%c, --%s",
+		optndx, each->longopt.val, each->longopt.name);
 #endif /* _LOGERROR_H */
-	   }
 
 	 if (each->longopt.val != '\0')
 	   {
-	     /* Check for duplicates. */
 	     for (check = new; check != put; check++)
 	       {
 		 if (check->val == each->longopt.val)
 		   {
 #if defined(_LOGERROR_H) 
 		     error (0, _func, __FILE__, __LINE__, 
-			    "Duplicate switch character '%c' between '%s' and '%s'", 
-			    each->longopt.val,
-			    check->name ? check->name : "?",
-			    each->longopt.name ? each->longopt.name : "?");
+			    "Duplicate switch character '%c' between '%s' and '%s'", each->longopt.val,
+			    check->name ? check->name : "?", each->longopt.name ? each->longopt.name : "?");
 #endif /* _LOGERROR_H */
 		     free (new);
 		     return ((struct option *) NULL);
 		   }
-	       } /* for (check = new; .... ) */
+	       }
 
 	     *optput = each->longopt.val;
 	     optput++;
@@ -214,9 +175,6 @@ usageopt_option_new (const usageopt_t *list, char **p_optstr)
 	       } /* switch (each->longopt.has_arg) */
 	     *optput = '\0';
 	   }
-	 if (each->longopt.name != (char *) NULL) {
-	   put++;
-	 }
        }
 
      memset ((void *) put, 0, sizeof (*put));
@@ -241,30 +199,6 @@ usageopt_option_new (const usageopt_t *list, char **p_optstr)
 	 optstr = (char *) NULL;
        }
 
-     if (usageopt_debug > 0)
-       {
-	 struct option *dump;
-
-	 fprintf(stderr, "usageopt_option_new() returns %p\n", new);
-
-	 for (dump = new; (dump->name != (char *) NULL) && (dump->val != 0); dump++)
-	   {
-	     fprintf (stderr, "\t{ ");
-	     if (dump->name) {
-	       fprintf (stderr, "\"%s\"", dump->name);
-	     }
-	     else {
-	       fprintf (stderr, "NULL");
-	     }
-	     fprintf (stderr, ", %d, %p, ", dump->has_arg, dump->flag);
-	     if (dump->val) {
-	       fprintf (stderr, "'%c' }\n", dump->val);
-	     }
-	     else {
-	       fprintf (stderr, "0 }\n");
-	     }
-	   }
-       }
      return (new);
 
 } /* end of usageopt_option_new() */
@@ -431,7 +365,7 @@ usageopt_usage (FILE *out, unsigned int verbose, const char *progname,
 	    
 	    fprintf (out, " <%s> ", str);
 	    
-	    if (each->longopt.has_arg == optional_argument)
+	      if (each->longopt.has_arg == optional_argument)
 	      {
 		fprintf (out, " ]");
 	      }

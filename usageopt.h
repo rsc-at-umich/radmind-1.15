@@ -35,7 +35,6 @@ typedef struct
  * Prototypes
  */
 
-extern int            usageopt_debug;
 extern int            usageopt_is_last_option (const usageopt_t *usageopts);
 extern struct option *usageopt_option_new ( const usageopt_t *usageopts, char **p_optstr);
 extern void           usageopt_usage (FILE *out, unsigned int verbose, const char *progname, const usageopt_t *usageopts, const char *extra, unsigned int termwidth);

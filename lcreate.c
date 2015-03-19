@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2014 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -41,6 +41,7 @@
 #include "tls.h"
 #include "largefile.h"
 #include "progress.h"
+#include "usageopt.h"
 
 /*
  * STOR
@@ -53,17 +54,114 @@
  */
 
 int		verbose = 0;
+int		debug = 0;
 int		dodots = 0;
 int		cksum = 0;
 int		quiet = 0;
 int		linenum = 0;
 int		force = 0;
+char           *progname = "lcreate";
 extern off_t	lsize;
 extern char	*version;
 extern char	*checksumlist;
 extern struct timeval   timeout;   
 const EVP_MD    *md;
 SSL_CTX  	*ctx;
+
+extern char *optarg;
+extern int optind, opterr, optopt;
+
+/*
+ * Command-line options
+ *
+ * Formerly getopt - "%c:Fh:ilnNp:P:qrt:TU:vVw:x:y:z:Z:"
+ *
+ * Remaining "FlnNqrt:TU:vVw:x:y:z:Z:"
+ */
+
+
+static const usageopt_t main_usage[] = 
+  {
+    { (struct option) { "progress", no_argument,  NULL, '%' },
+      "Progress output", NULL },
+
+    { (struct option) { "checksum",     required_argument, NULL, 'c' },
+      "specify checksum type",  "checksum-type: [sha1,etc]" },
+
+
+    { (struct option) { "hostname",     required_argument, NULL, 'h' },
+      "Radmind server hostname to contact, defaults to '" _RADMIND_HOST "'", "domain-name" },
+
+    { (struct option) { "tcp-port",      required_argument, NULL, 'p'},
+      "TCP port on radmind server to connect to", "tcp-port#"}, 
+
+    { (struct option) { "ca-directory",  required_argument, NULL, 'P' },
+	      "Specify where 'ca.pem' can be found.", "pathname"},
+
+    { (struct option) { "ca-file",       required_argument, NULL, 'x' },
+	      "Specify the certificate authority file", "pem-file" },
+
+    { (struct option) { "cert",          required_argument, NULL, 'y' },
+	      "Certificate for authenticating client to radmind server", "pem-file"},
+
+    { (struct option) { "cert-key",      required_argument, NULL, 'z' },
+	      "Key file for --cert certificate", "key-file" },
+
+#if defined(HAVE_ZLIB)
+    { (struct option) { "zlib-level",   required_argument,   NULL, 'Z'},
+	      "Specify zlib compression level", "number"},
+#else
+    { (struct option) { "zlib-level",   required_argument,   NULL, 'Z'},
+	      "Not available", "(number)"},
+#endif /* defined(HAVE_ZLIB) */
+
+    { (struct option) { "ignore-file-size", no_argument, NULL, 'F' },
+	      "Ignore file size differences", NULL},
+
+    { (struct option) { "transcript-only", no_argument, NULL, 'T' },
+      "Upload the transcript only, and not the corresponding files", NULL },
+
+    { (struct option) { "transcript-name", required_argument, NULL, 't' },
+      "specifies the name under which the transcript will be stored when saved on the server", "<name>" },
+
+    { (struct option) { "verify-only", no_argument, NULL, 'n' },
+	      "Don't upload any files or transcripts.  Verify all files in the transcript exist in the filesystem and have the size listed in the transcript", NULL},
+
+    { (struct option) { "negative", no_argument, NULL, 'N' },
+	      "uploads a negative transcript then uploads all corresponding files as zero length.", NULL},
+
+    { (struct option) { "line-buffering", no_argument, NULL, 'i' },
+	      "Force line buffering", NULL},
+
+    { (struct option) { "login", no_argument, NULL, 'l' },
+	      "Turn on user authentication.  Requires a TLS.", NULL},
+
+    { (struct option) { "user", required_argument, NULL, 'U' },
+	      "Specifes the user for user authentication.  By default, the login name returned by getlogin() will be used.", "username" },
+
+    { (struct option) { "random-file",   no_argument,        NULL, 'r' },
+	      "use random seed file $RANDFILE if that environment variable is set, $HOME/.rnd otherwise.  See RAND_load_file(3o).", NULL},
+    { (struct option) { "debug", no_argument, NULL, 'd' },
+      		"Raise debugging level to see what's happening", NULL},
+
+    { (struct option) { "verbose", no_argument, NULL, 'v' },
+      		"Turn on verbose mode", NULL },
+
+    { (struct option) { "quiet", no_argument, NULL, 'q' },
+	      "Suppress messages", NULL},
+
+    { (struct option) { "help",         no_argument,       NULL, 'H' },
+     		"This message", NULL },
+    
+    { (struct option) { "version",      no_argument,       NULL, 'V' },
+     		"show version and list of supported checksums in order of preference", NULL },
+    
+
+    /* End of list */
+    { (struct option) {(char *) NULL, 0, (int *) NULL, 0}, (char *) NULL, (char *) NULL}
+  }; /* end of main_usage[] */
+
+/* Main */
 
 extern char             *caFile, *caDir, *cert, *privatekey;
 
@@ -102,9 +200,19 @@ main( int argc, char **argv )
     char                *user = NULL;
     char                *password = NULL;
     char               **capa = NULL; /* capabilities */
+    int                  optndx = 0;
+    struct option       *main_opts;
+    char                *main_optstr;
 
-    while (( c = getopt( argc, argv, "%c:Fh:ilnNp:P:qrt:TU:vVw:x:y:z:Z:" ))
-	    != EOF ) {
+    /* Get our name from argv[0] */
+    for (main_optstr = argv[0]; *main_optstr; main_optstr++) {
+        if (*main_optstr == '/')
+	    progname = main_optstr+1;
+    }
+
+    main_opts = usageopt_option_new (main_usage, &main_optstr);
+
+    while (( c = getopt_long (argc, argv, main_optstr, main_opts, &optndx)) != -1) {
 	switch( c ) {
 	case '%':
 	    showprogress = 1;
@@ -114,7 +222,10 @@ main( int argc, char **argv )
             OpenSSL_add_all_digests();
             md = EVP_get_digestbyname( optarg );
             if ( !md ) {
-                fprintf( stderr, "%s: unsupported checksum\n", optarg );
+	        usageopt_usage (stderr, 0 /* not verbose */, progname,  main_usage,
+				"<transcript>", 80);
+	        fprintf( stderr, "%s: unsupported checksum '%s'\n", progname,
+			 optarg );
                 exit( 2 );
             }
             cksum = 1;
@@ -173,6 +284,10 @@ main( int argc, char **argv )
             user = optarg;
             break;
 
+	case 'd':
+	    debug++;
+	    break;
+
 	case 'v':
 	    verbose = 1;
 	    logger = v_logger;
@@ -221,6 +336,12 @@ main( int argc, char **argv )
             exit( 1 );
 #endif /* HAVE_ZLIB */
 
+	case 'H':  /* --help */
+	  usageopt_usage (stdout, 1 /* verbose */, progname,  main_usage,
+			  "<transcript-file>", 80);
+	  exit (0);
+
+
 	case '?':
 	    err++;
 	    break;
@@ -238,14 +359,8 @@ main( int argc, char **argv )
     }
 
     if ( err || ( argc - optind != 1 ))   {
-	fprintf( stderr, "usage: lcreate [ -%%FlnNrTV ] [ -q | -v | -i ] " );
-	fprintf( stderr, "[ -c checksum ] " );
-	fprintf( stderr, "[ -h host ] [ -p port ] [ -P ca-pem-directory ] " );
-	fprintf( stderr, "[ -t stored-name ] [ -U user ] " );
-        fprintf( stderr, "[ -w auth-level ] [ -x ca-pem-file ] " );
-        fprintf( stderr, "[ -y cert-pem-file] [ -z key-pem-file ] " );
-        fprintf( stderr, "[ -Z compression-level ] " );
-	fprintf( stderr, "create-able-transcript\n" );
+        usageopt_usage (stderr, 0 /* not verbose */, progname,  main_usage,
+			"<creatable-transcript>", 80);
 	exit( 2 );
     }
 
