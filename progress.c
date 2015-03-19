@@ -46,6 +46,7 @@ loadsetsize( FILE *tran )
     while ( fgets( tline, LINE_MAX, tran ) != NULL ) {
 	linenum++;
 	strcpy( line, tline );
+	targv = (char **) NULL;
 	if (( tac = argcargv( tline, &targv )) == 0 ) {
 	    continue;
 	}
@@ -79,6 +80,7 @@ applyloadsetsize( FILE *tran )
     while ( fgets( tline, LINE_MAX, tran ) != NULL ) {
 	linenum++;
 	strcpy( line, tline );
+	targv = (char **) NULL; /* Safety */
 	/* skip empty lines and transcript marker lines */
 	if (( tac = argcargv( tline, &targv )) <= 1 ) {
 	    continue;
@@ -120,6 +122,7 @@ lcksum_loadsetsize( FILE *tran, const char *prefix )
     while ( fgets( tline, LINE_MAX, tran ) != NULL ) {
 	linenum++;
 	strcpy( line, tline );
+	targv = (char **) NULL;  /* Safety */
 	if (( tac = argcargv( tline, &targv )) <= 1 ) {
 	    continue;
 	}

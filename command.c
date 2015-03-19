@@ -484,7 +484,7 @@ special_t(const unsigned char *transcript, const unsigned char *epath )
 {
     FILE		*fs;
     int			ac, len;
-    char		**av;
+    char		**av = (char **) NULL;
     static char         line[ MAXPATHLEN ];
 
     if (( fs = fopen( (const char *) transcript, "r" )) == NULL ) {
@@ -497,7 +497,7 @@ special_t(const unsigned char *transcript, const unsigned char *epath )
 	    syslog( LOG_ERR, "special_t: %s: line too long", transcript );
 	    break;
 	}
-
+	av = (char **) NULL;
 	if (( ac = argcargv( line, &av )) != 8 ) {
 	    continue;
 	}
@@ -677,7 +677,7 @@ f_stat( SNET *sn, int ac, char *av[] )
 	 * from special_t(), and that will blow away the current values
 	 * for av[ 2 ]
 	 *
-	 * Could just use new argvargc API... XXX  Notice how we never free
+	 * Could just use new argcargv API... XXX  Notice how we never free
 	 * env_file...
 	 */
 
@@ -1288,8 +1288,9 @@ command_k( const unsigned char *path_config, int depth )
     while (( line = snet_getline( sn, NULL )) != NULL ) {
 	linenum++;
 
+	av = (char **) NULL;  /* Safety */
         if (( ac = argcargv( line, &av )) < 0 ) {
-	    syslog( LOG_ERR, "argvargc: %m" );
+	    syslog( LOG_ERR, "argcargv: %m" );
 	    goto command_k_done;
 	}
 

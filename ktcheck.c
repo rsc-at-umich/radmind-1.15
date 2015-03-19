@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2007, 2013 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2007, 2013, 2014 by the Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -48,7 +48,9 @@
 #include "rmdirs.h"
 #include "report.h"
 #include "mkprefix.h"
+#include "usageopt.h"
 
+static void ktcheck_usage (FILE *out, int verbose);
 static int cleandirs( const filepath_t *path, llist_t *khead );
 static int clean_client_dir( void );
 static int check( SNET *sn, const char *type, const filepath_t *path); 
@@ -57,9 +59,11 @@ static int getstat( SNET *sn, const char *description, char *stats );
 static int read_kfile( const filepath_t *kfile, const char *event );
 SNET *sn;
 
+char	               *progname = "ktcheck";
 int			linenum = 0;
 int			cksum = 0;
 int			verbose = 0;
+int	                debug;
 int			dodots= 0;
 int			quiet = 0;
 int			update = 1;
@@ -86,13 +90,13 @@ expand_kfile( llist_t **khead, const filepath_t *kfile )
     FILE		*kf;
     filepath_t		path[ MAXPATHLEN ];
     char		buf[ MAXPATHLEN ];
-    char		**tav;
+    char		**tav = (char **) NULL;
     int			tac;
     size_t		len;
     unsigned int	line = 0;
 
     if (( kf = fopen( (char *) kfile, "r" )) == NULL ) {
-      perror( (const char *) kfile );
+        perror( (const char *) kfile );
 	exit( 2 );
     }
 
@@ -109,6 +113,8 @@ expand_kfile( llist_t **khead, const filepath_t *kfile )
 	if ( *buf == '#' || *buf == 's' || *buf == '-' ) {
 	    continue;
 	}
+	
+	tav = (char **) NULL; /* Saftey */
 	/* skip blank lines */
 	if (( tac = argcargv( buf, &tav )) == 0 ) {
 	    continue;
@@ -564,6 +570,105 @@ check( SNET *sn, const char *type, const filepath_t *file )
     }
 }
 
+extern char *optarg;
+extern int optind, opterr, optopt;
+
+/*
+ * Command-line options
+ *
+ * Formerly getopt - "Cc:D:e:h:IiK:np:P:qrvVw:x:y:z:Z:"
+ *
+ * Remaining opts: ""
+ */
+
+static const usageopt_t main_usage[] = 
+  {
+    { (struct option) { "clean-dirs",    no_argument,       NULL, 'C' },
+              "clean '" _RADMIND_PATH "/client' directory", NULL },
+
+    { (struct option) { "checksum",     required_argument, NULL, 'c' },
+              "specify checksum type",  "checksum-type: [sha1,etc]" },
+
+    { (struct option) { "radmind-directory",  required_argument, NULL, 'D' },
+	      "Specifiy the radmind working directory, by default "
+      		_RADMIND_PATH, "pathname"},
+
+    { (struct option) { "case-insensitive", no_argument,   NULL, 'I' },
+     		"case insensitive when comparing paths", NULL },
+
+    { (struct option) { "line-buffering", no_argument, NULL, 'i' },
+	      "Force line buffering", NULL},
+
+    { (struct option) { "nochange", no_argument, NULL, 'n' },
+      	      "no files modified", NULL},
+
+    { (struct option) { "event-name", required_argument, NULL, 'e' },
+	      "Set event report name (defaults to 'ktcheck')", "event-name" },
+
+    { (struct option) { "command-file", required_argument, NULL, 'K' },
+                "Specify base command file, defaults to '" _RADMIND_COMMANDFILE "'", "command.K" },
+
+    { (struct option) { "random-file",   no_argument,        NULL, 'r' },
+	      "use random seed file $RANDFILE if that environment variable is set, $HOME/.rnd otherwise.  See RAND_load_file(3o).", NULL},
+
+    { (struct option) { "hostname",     required_argument, NULL, 'h' },
+      "Radmind server hostname to contact, defaults to '" _RADMIND_HOST "'", "domain-name" },
+
+    { (struct option) { "tcp-port",      required_argument, NULL, 'p'},
+      "TCP port on radmind server to connect to", "tcp-port#"}, 
+
+    { (struct option) { "ca-directory",  required_argument, NULL, 'P' },
+	      "Specify where 'ca.pem' can be found.", "pathname"},
+
+    { (struct option) { "authentication",  required_argument, NULL, 'w' },
+	      "Specify the authentication level", "number" },
+
+    { (struct option) { "ca-file",       required_argument, NULL, 'x' },
+	      "Specify the certificate authority file", "pem-file" },
+
+    { (struct option) { "cert",          required_argument, NULL, 'y' },
+	      "Certificate for authenticating client to radmind server", "pem-file"},
+
+    { (struct option) { "cert-key",      required_argument, NULL, 'z' },
+	      "Key file for --cert certificate", "key-file" },
+
+#if defined(HAVE_ZLIB)
+    { (struct option) { "zlib-level",   required_argument,   NULL, 'Z'},
+	      "Specify zlib compression level", "number"},
+#else
+    { (struct option) { "zlib-level",   required_argument,   NULL, 'Z'},
+	      "Not available", "(number)"},
+#endif /* defined(HAVE_ZLIB) */
+
+    { (struct option) { "quiet", no_argument, NULL, 'q' },
+	      "Suppress messages", NULL},
+
+    { (struct option) { "help",         no_argument,       NULL, 'H' },
+     		"This message", NULL },
+    
+    { (struct option) { "version",      no_argument,       NULL, 'V' },
+     		"show version number, and a list of supported checksumming algorithms in descending order of preference and exits", NULL },
+    
+    { (struct option) { "verbose",           no_argument,       NULL, 'v' },
+     		"Be chatty", NULL },
+
+
+    /* End of list */
+    { (struct option) {(char *) NULL, 0, (int *) NULL, 0}, (char *) NULL, (char *) NULL}
+  }; /* end of main_usage[] */
+
+
+   static void
+   ktcheck_usage (FILE *out, int verbose)
+{
+      usageopt_usage (out, verbose, progname,  main_usage,
+		      "", 80);
+     
+      return;
+} /* End of ktcheck_usage() */
+
+
+
 /*
  * exit codes:
  *      0       No changes found, everything okay
@@ -588,9 +693,19 @@ main( int argc, char **argv )
     filepath_t		tempfile[ MAXPATHLEN ];
     char	        **capa = (char **) NULL; /* capabilities */
     char		*event = "ktcheck";	 /* report event type */
+    int       		optndx = 0;
+    struct option	*main_opts;
+    char        	*main_optstr;
 
-    while (( c = getopt( argc, argv,
-	    "Cc:D:e:h:IiK:np:P:qrvVw:x:y:z:Z:" )) != EOF ) {
+    /* Get our name from argv[0] */
+    for (main_optstr = argv[0]; *main_optstr; main_optstr++) {
+        if (*main_optstr == '/')
+	    progname = main_optstr+1;
+    }
+
+    main_opts = usageopt_option_new (main_usage, &main_optstr);
+
+    while (( c = getopt_long (argc, argv, main_optstr, main_opts, &optndx)) != -1) {
 	switch( c ) {
 	case 'C':	/* clean up dir containing command.K */
 	    clean = 1;
@@ -601,13 +716,14 @@ main( int argc, char **argv )
             md = EVP_get_digestbyname( optarg );
             if ( !md ) {
                 fprintf( stderr, "%s: unsupported checksum\n", optarg );
+		ktcheck_usage (stderr, 0);
                 exit( 2 );
             }
             cksum = 1;
             break;
 
 	case 'D':
-	  radmind_path = (filepath_t *) optarg;
+	    radmind_path = (filepath_t *) optarg;
 	    break;
 
 	case 'e':		/* set the event label for reporting */
@@ -651,7 +767,16 @@ main( int argc, char **argv )
 	    use_randfile = 1;
 	    break;
 
-	case 'v':
+	case 'd': /* --debug */
+	    debug++;
+	    break;
+
+	case 'H': /* --help */
+	    ktcheck_usage (stdout, 1);
+	    exit (0);
+	    /* UNREACHABLE */
+
+	case 'v': /* --verbose */
 	    verbose = 1;
 	    logger = v_logger;
 	    if ( isatty( fileno( stdout ))) {
@@ -659,10 +784,11 @@ main( int argc, char **argv )
 	    }
 	    break;
 
-	case 'V':
+	case 'V': /* --version */
 	    printf( "%s\n", version );
 	    printf( "%s\n", checksumlist );
 	    exit( 0 );
+	    /* UNREACHABLE */
 
         case 'w' :              /* authlevel 0:none, 1:serv, 2:client & serv */
             authlevel = atoi( optarg );
@@ -709,14 +835,7 @@ main( int argc, char **argv )
     }
 
     if ( err || ( argc - optind != 0 )) {
-	fprintf( stderr, "usage: %s ", argv[ 0 ] );
-	fprintf( stderr, "[ -CIinrV ] [ -q | -v ] " );
-	fprintf( stderr, "[ -c checksum ] [ -D radmind_path ] " );
-	fprintf( stderr, "[ -K command file ] " );
-	fprintf( stderr, "[ -h host ] [ -p port ] [ -P ca-pem-directory ] " );
-	fprintf( stderr, "[ -w auth-level ] [ -x ca-pem-file ] " );
-	fprintf( stderr, "[ -y cert-pem-file] [ -z key-pem-file ] " );
-	fprintf( stderr, "[ -Z compression-level ]\n" );
+        ktcheck_usage (stderr, 0);
 	exit( 2 );
     }
 

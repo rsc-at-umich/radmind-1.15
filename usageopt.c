@@ -70,7 +70,7 @@ usageopt_option_new (const usageopt_t *list, char **p_optstr)
 #if defined(_LOGERROR_H)
      static char     _func[] = "usageopt_option_new";
 #endif /* _LOGERROR_H */
-     int             size_list;
+     int             size_list;  /* Initialized in for(;;) loop */
      int	     size_optstr = 0;
      int	     optndx;	
      char           *optstr = (char *) NULL;
@@ -108,7 +108,7 @@ usageopt_option_new (const usageopt_t *list, char **p_optstr)
      debug (2, _func, __FILE__, __LINE__, "Creating %d options of size %u", size_list, sizeof(*new));
 #endif /* defined(_LOGERROR_H) */
 
-     new = calloc (size_list + 1, sizeof (*new));
+     new = calloc (size_list + 1, sizeof (*new));  /* With an extra, empty one at the end. */
 
      if ((p_optstr != (char **) NULL) && (size_optstr > 0))
        {
@@ -127,8 +127,14 @@ usageopt_option_new (const usageopt_t *list, char **p_optstr)
 	 return ((struct option *) NULL);
        }
 
+     /*
+      * Fill the calloc'd (struct options) *new list and the option string.
+      */
      for (optndx = 0, put = new, each = list; ! usageopt_is_last_option(each); each++, put++, optndx++)
        {
+	 /*
+	  * Straightforward copy of (struct option) from optusage_t to new array.
+	  */
 	 memcpy ((void *) put, (void *) &(each->longopt), sizeof (*put));
 
 #if defined(_LOGERROR_H)

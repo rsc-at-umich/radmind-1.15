@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2014 by the Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -42,7 +42,9 @@
 #include "largefile.h"
 #include "progress.h"
 #include "report.h"
+#include "usageopt.h"
 
+char            *progname = "lapply";
 int		linenum = 0;
 int		cksum = 0;
 int		quiet = 0;
@@ -73,6 +75,7 @@ struct apply_node {
     apply_node_t        *next;
 };
 
+static void             lapply_usage (FILE *out, int verbose);
 static apply_node_t 	*apply_node_create( const filepath_t *path, const char *tline,
 					    const filepath_t *tran );
 static void 		apply_node_free( apply_node_t *ap_node );
@@ -250,6 +253,115 @@ do_line( char *tline, const filepath_t *tran, int present, struct stat *st, SNET
     return( 0 );
 }
 
+
+extern char *optarg;
+extern int optind, opterr, optopt;
+
+/*
+ * Command-line options
+ *
+ * Formerly getopt - "%c:Ce:Fh:iInp:P:qru:Vvw:x:y:z:Z:"
+ *
+ * Remaining opts: ""
+ */
+
+static const usageopt_t main_usage[] = 
+  {
+    { (struct option) { "percentage",   no_argument,       NULL, '%' }, 
+     		"Show percentage done progress", NULL }, 
+
+    { (struct option) { "create",    no_argument,       NULL, 'C' },
+              "Create missing intermediate directories", NULL},
+
+    { (struct option) { "checksum",     required_argument, NULL, 'c' },
+              "specify checksum type",  "checksum-type: [sha1,etc]" },
+
+    { (struct option) { "radmind-directory",  required_argument, NULL, 'D' },
+	      "Specifiy the radmind working directory, by default "
+      		_RADMIND_PATH, "pathname"},
+
+    { (struct option) { "case-insensitive", no_argument,   NULL, 'I' },
+     		"case insensitive when comparing paths", NULL },
+
+    { (struct option) { "line-buffering", no_argument, NULL, 'i' },
+	      "Force line buffering", NULL},
+
+    { (struct option) { "no-network", no_argument, NULL, 'n' },
+      	      "no network connection will be made, causing only file system removals and updates to be applied. auth-level is implicitly set to 0.", NULL},
+
+    { (struct option) { "event-name", required_argument, NULL, 'e' },
+	      "Set event report name (defaults to 'lapply')", "event-name" },
+
+    { (struct option) { "command-file", required_argument, NULL, 'K' },
+                "Specify base command file, defaults to '" _RADMIND_COMMANDFILE "'", "command.K" },
+
+    { (struct option) { "random-file",   no_argument,        NULL, 'r' },
+	      "use random seed file $RANDFILE if that environment variable is set, $HOME/.rnd otherwise.  See RAND_load_file(3o).", NULL},
+
+    { (struct option) { "force", no_argument, NULL, 'F' },
+              "remove all user defined flags for a file if they exist", NULL },
+
+    { (struct option) { "umask",        required_argument,  NULL, 'u' },
+	      "specifies the umask for temporary files, by default 0077", "number" },
+
+    { (struct option) { "hostname",     required_argument, NULL, 'h' },
+              "Radmind server hostname to contact, defaults to '" _RADMIND_HOST "'", "domain-name" },
+
+    { (struct option) { "tcp-port",      required_argument, NULL, 'p'},
+              "TCP port on radmind server to connect to", "tcp-port#"}, 
+
+    { (struct option) { "ca-directory",  required_argument, NULL, 'P' },
+	      "Specify where 'ca.pem' can be found.", "pathname"},
+
+    { (struct option) { "authentication",  required_argument, NULL, 'w' },
+	      "Specify the authentication level", "number" },
+
+    { (struct option) { "ca-file",       required_argument, NULL, 'x' },
+	      "Specify the certificate authority file", "pem-file" },
+
+    { (struct option) { "cert",          required_argument, NULL, 'y' },
+	      "Certificate for authenticating client to radmind server", "pem-file"},
+
+    { (struct option) { "cert-key",      required_argument, NULL, 'z' },
+	      "Key file for --cert certificate", "key-file" },
+
+#if defined(HAVE_ZLIB)
+    { (struct option) { "zlib-level",   required_argument,   NULL, 'Z'},
+	      "Specify zlib compression level", "number"},
+#else
+    { (struct option) { "zlib-level",   required_argument,   NULL, 'Z'},
+	      "Not available", "(number)"},
+#endif /* defined(HAVE_ZLIB) */
+
+    { (struct option) { "quiet", no_argument, NULL, 'q' },
+	      "Suppress messages", NULL},
+
+    { (struct option) { "help",         no_argument,       NULL, 'H' },
+     		"This message", NULL },
+    
+    { (struct option) { "version",      no_argument,       NULL, 'V' },
+     		"show version number, and a list of supported checksumming algorithms in descending order of preference and exits", NULL },
+    
+    { (struct option) { "verbose",           no_argument,       NULL, 'v' },
+     		"Be chatty", NULL },
+
+
+    /* End of list */
+    { (struct option) {(char *) NULL, 0, (int *) NULL, 0}, (char *) NULL, (char *) NULL}
+  }; /* end of main_usage[] */
+
+
+   static void
+   lapply_usage (FILE *out, int verbose)
+{
+      usageopt_usage (out, verbose, progname,  main_usage,
+		      "[ <applicable-transcript> ]", 80);
+      return;
+} /* End of lapply_usage() */
+
+
+
+
 /*
  * exit values
  * 0 - OKAY
@@ -286,9 +398,19 @@ main( int argc, char **argv )
     int			use_randfile = 0;
     char	        **capa = NULL;		/* capabilities */
     char		* event = "lapply";	/* report event type */
+    int       		optndx = 0;
+    struct option	*main_opts;
+    char        	*main_optstr;
 
-    while (( c = getopt( argc, argv,
-	    "%c:Ce:Fh:iInp:P:qru:Vvw:x:y:z:Z:" )) != EOF ) {
+    /* Get our name from argv[0] */
+    for (main_optstr = argv[0]; *main_optstr; main_optstr++) {
+        if (*main_optstr == '/')
+	    progname = main_optstr+1;
+    }
+
+    main_opts = usageopt_option_new (main_usage, &main_optstr);
+
+    while (( c = getopt_long (argc, argv, main_optstr, main_opts, &optndx)) != -1) {
 	switch( c ) {
 	case '%':
 	    showprogress = 1;
@@ -357,6 +479,11 @@ main( int argc, char **argv )
 	    printf( "%s\n", version );
 	    printf( "%s\n", checksumlist );
 	    exit( 0 );
+
+	case 'H': /* --help */
+	    lapply_usage (stdout, 1);
+	    exit (0);
+	    /* UNREACHABLE */
 
 	case 'v':
 	    verbose = 1;
@@ -437,14 +564,7 @@ main( int argc, char **argv )
     }
 
     if ( err ) {
-	fprintf( stderr, "usage: %s [ -CFiInrV ] [ -%% | -q | -v ] ",
-	    argv[ 0 ] );
-	fprintf( stderr, "[ -c checksum ] [ -h host ] [ -p port ] " );
-	fprintf( stderr, "[ -P ca-pem-directory ] [ -u umask ] " );
-	fprintf( stderr, "[ -w auth-level ] [ -x ca-pem-file ] " );
-	fprintf( stderr, "[ -y cert-pem-file ] [ -z key-pem-file ] " );
-	fprintf( stderr, "[ -Z compression-level ] " );
-	fprintf( stderr, "[ appliable-transcript ]\n" );
+        lapply_usage (stderr, 0);
 	exit( 2 );
     }
 

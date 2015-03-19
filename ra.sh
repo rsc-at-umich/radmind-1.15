@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Copyright (c) 2004, 2007 Regents of The University of Michigan.
+# Copyright (c) 2004, 2007, 2014 by the Regents of The University of Michigan.
 # All Rights Reserved.  See COPYRIGHT.
 #
 # Radmind Assistant shell script (rash)
@@ -33,6 +33,7 @@ USER=${SUDO_USER:-$USER}
 TMPDIR="${TMPDIR:=/tmp}"
 DEFAULTS="/etc/defaults/radmind"
 FSDIFFROOT="."
+FSDIFF_OPTS=""
 DEFAULTWORKDIR="/"
 FLAG="_RADMIND_DIR/client/.RadmindRunning"
 CHECKEDOUT="_RADMIND_DIR/client/.CheckedOut"
@@ -55,7 +56,7 @@ RASHTMP="${TMPDIR}/.ra.$$"
 if [ -f "${MKTEMP}"  ]; then
     RASHTMP=`${MKTEMP} -qd "${TMPDIR}/.ra.$$.XXXXXX"`
     if [ $? -ne 0 ]; then
-	$ECHO "mktemp failed"
+	${ECHO} "mktemp failed"
 	exit 1
     fi
 fi
@@ -71,7 +72,7 @@ if [ ! -f "${DEFAULTS}" ]; then
 fi
 
 Yn() {
-    $ECHO -n "$*" "[Yn] "
+    ${ECHO} -n "$*" "[Yn] "
     read ans
     if [ $? -ne 0 ]; then
 	return 0
@@ -83,20 +84,20 @@ Yn() {
 }
 
 checkedout() {
-    if [ -s ${CHECKEDOUT} ]; then
-	OWNER=`cat ${CHECKEDOUT}`
+    if [ -s "${CHECKEDOUT}" ]; then
+	OWNER=`cat "${CHECKEDOUT}"`
 	return 1
     fi
     return 0
 }
 
 usage() {
-    $ECHO "Usage:	$0 [ -ctV ] [ -D working-directory ] [ -h server ] [ -p port ] [ -w authlevel ] { trip | update | create | auto | force | checkout | checkin } [ /path/or/file ]" >&2
+    ${ECHO} "Usage:	$0 [ -ctV ] [ -D working-directory ] [ -h server ] [ -p port ] [ -w authlevel ] [ -M <fsdiff-metadata-check-opts> ] { trip | update | create | auto | force | checkout | checkin } [ /path/or/file ]" >&2
     exit 1
 }
 
 cleanup() {
-    if [ "$TEMPFILES" = FALSE ]; then
+    if [ "${TEMPFILES}" = FALSE ]; then
 	rm -fr "${RASHTMP}"
     fi
 }
@@ -107,6 +108,8 @@ cleanup_and_exit() {
 }
 
 dopreapply() {
+    local SCRIPTS script
+
     if [ -d ${PREAPPLY} ]; then
 	SCRIPTS=`find ${PREAPPLY} -perm -u+x \! -type d | sort`
 	if [ "${SCRIPTS}" ]; then
@@ -118,6 +121,8 @@ dopreapply() {
 }
 
 dopostapply() {
+    local SCRIPTS script
+
     if [ -d ${POSTAPPLY} ]; then
 	SCRIPTS=`find ${POSTAPPLY} -perm -u+x \! -type d | sort`
 	if [ "${SCRIPTS}" ]; then
@@ -129,15 +134,17 @@ dopostapply() {
 }
 
 update() {
+    local opt kopt apply can_edit
+
     opt="$1"
-    kopt=
-    apply=ask
-    can_edit=no
+    kopt=""
+    apply="ask"
+    can_edit="no"
 
     checkedout
     if [ $? -eq 1 ]; then
-	$ECHO "Checked out by ${OWNER}"
-	if [ x"$opt" = x"interactive" -a x"$USER" = x"$OWNER" ]; then
+	${ECHO} "Checked out by ${OWNER}"
+	if [ x"${opt}" = x"interactive" -a x"${USER}" = x"${OWNER}" ]; then
 	    Yn "Continue with update?"
 	    if [ $? -eq 0 ]; then
 		exit 1
@@ -147,27 +154,27 @@ update() {
 	fi
     fi
 
-    if [ x"$opt" = x"interactive" ]; then
+    if [ x"${opt}" = x"interactive" ]; then
 	kopt="-n"
     fi
 
     ktcheck ${kopt} ${NETOPTS} -c sha1
     case "$?" in
     0)  
-	if [ x"$opt" = x"hook" -a ! -f "${FLAG}" ]; then
+	if [ x"${opt}" = x"hook" -a ! -f "${FLAG}" ]; then
 	    cleanup
 	    exit 0
 	fi
 	;;
 
     1)
-	if [ x"$opt" = x"interactive" ]; then
+	if [ x"${opt}" = x"interactive" ]; then
 	    Yn "Update command file and/or transcripts?"
 	    if [ $? -eq 1 ]; then
 		ktcheck ${NETOPTS} -c sha1
 		RC=$?
 		if [ $RC -ne 1 ]; then
-		    $ECHO Nothing to update
+		    ${ECHO} Nothing to update
 		    cleanup
 		    exit $RC
 		fi
@@ -181,40 +188,40 @@ update() {
 	;;
     esac
 
-    fsdiff -A ${CASE} ${FPROGRESS} ${CHECKSUM} -o ${FTMP} ${FSDIFFROOT}
+    fsdiff -A ${CASE} ${FPROGRESS} ${CHECKSUM} ${FSDIFF_OPTS} -o "${FTMP}" "${FSDIFFROOT}"
     if [ $? -ne 0 ]; then
 	cleanup
 	exit 1
     fi
 
-    if [ ! -s ${FTMP} ]; then
-	$ECHO Nothing to apply.
+    if [ ! -s "${FTMP}" ]; then
+	${ECHO} Nothing to apply.
 	cleanup
 	exit 0
     fi
-    if [ x"$opt" = x"interactive" ]; then
-	${PAGER} ${FTMP}
+    if [ x"${opt}" = x"interactive" ]; then
+	${PAGER} "${FTMP}"
 	infocmp >/dev/null 2>&1
 	if [ $? -eq 0 ]; then
 	    can_edit=yes
 	fi
     fi
     
-    if [ x"$opt" = x"interactive" -a -d "${PREAPPLY}" \
+    if [ x"${opt}" = x"interactive" -a -d "${PREAPPLY}" \
 		-a ! -z "`ls ${PREAPPLY} 2>/dev/null`" ]; then
 	Yn "Run pre-apply scripts on difference transcript?"
         if [ $? -eq 1 ]; then
-            dopreapply ${FTMP}
+            dopreapply "${FTMP}"
         fi
-    elif [ x"$opt" != x"interactive" ]; then
-	dopreapply ${FTMP}
+    elif [ x"${opt}" != x"interactive" ]; then
+	dopreapply "${FTMP}"
     fi
     if [ x"${opt}" = x"interactive" ]; then
 	while [ 1 ]; do
 	    if [ x"${can_edit}" = x"yes" ]; then
-		$ECHO -n "(e)dit difference transcript, "
+		${ECHO} -n "(e)dit difference transcript, "
 	    fi
-	    $ECHO -n "(a)pply or (c)ancel? "
+	    ${ECHO} -n "(a)pply or (c)ancel? "
 
 	    read ans
 	    if [ $? -ne 0 ]; then
@@ -227,8 +234,8 @@ update() {
 		;;
 
 	    c|C)
-		$ECHO
-		$ECHO Update cancelled
+		${ECHO}
+		${ECHO} Update cancelled
 		cleanup
 		exit 0
 		;;
@@ -250,28 +257,28 @@ update() {
     case "$?" in
     0)	;;
 
-    *)  if [ x"$opt" = x"hook" ]; then
-	    $ECHO -n "Applying changes failed, trying again "
-	    $ECHO "in ${RETRY} seconds..."
+    *)  if [ x"${opt}" = x"hook" ]; then
+	    ${ECHO} -n "Applying changes failed, trying again "
+	    ${ECHO} "in ${RETRY} seconds..."
 	    sleep ${RETRY}
 	    RETRY=${RETRY}0
 
-	    $ECHO %OPENDRAWER
-	    $ECHO %BEGINPOLE
+	    ${ECHO} %OPENDRAWER
+	    ${ECHO} %BEGINPOLE
     	else 
 	    cleanup
 	fi
 	return 1
 	;;
     esac
-    if [ x"$opt" = x"interactive" -a -d "${POSTAPPLY}" \
+    if [ x"${opt}" = x"interactive" -a -d "${POSTAPPLY}" \
 		-a ! -z "`ls ${POSTAPPLY} 2>/dev/null`" ]; then
 	Yn "Run post-apply scripts on difference transcript?"
         if [ $? -eq 1 ]; then
-            dopostapply ${FTMP}
+            dopostapply "${FTMP}"
         fi
-    elif [ x"$opt" != x"interactive" ]; then
-	dopostapply ${FTMP}
+    elif [ x"${opt}" != x"interactive" ]; then
+	dopostapply "${FTMP}"
     fi
     
     cleanup
@@ -284,7 +291,7 @@ if [ -f "${DEFAULTS}" ]; then
     . "${DEFAULTS}"
 fi
 
-while getopts %cD:h:Ilp:qr:tU:Vw: opt; do
+while getopts %cD:h:Ilp:qr:tU:Vw:M: opt; do
     case $opt in
     %)  PROGRESS="-%"
 	FPROGRESS="-%"
@@ -296,10 +303,10 @@ while getopts %cD:h:Ilp:qr:tU:Vw: opt; do
     c)	CHECKSUM="-csha1"
 	;;
 
-    D)  WORKDIR="$OPTARG"
+    D)  WORKDIR="${OPTARG}"
 	;;
 
-    h)	SERVER="$OPTARG"
+    h)	SERVER="${OPTARG}"
     	;;
 
     I)	CASE="-I"
@@ -308,24 +315,27 @@ while getopts %cD:h:Ilp:qr:tU:Vw: opt; do
     l)  USERAUTH="-l"
 	;;
 
-    p)  PORT="$OPTARG"
+    M)  FSDIFF_OPTS="${FSDIFF_OPTS}${FSDIFF_OPTS:+ }--metadata-check ${OPTARG}"
 	;;
 
-    r)  FSDIFFROOT="$OPTARG"
+    p)  PORT="${OPTARG}"
+	;;
+
+    r)  FSDIFFROOT="${OPTARG}"
 	;;
 
     t)	TEMPFILES="TRUE"
     	;;
 
-    U)	USER="$OPTARG"
-	USERNAME="$OPTARG"
+    U)	USER="${OPTARG}"
+	USERNAME="${OPTARG}"
     	;;
 
-    V)	$ECHO ${VERSION}
+    V)	${ECHO} ${VERSION}
 	exit 0
 	;;
 
-    w)	TLSLEVEL="$OPTARG"
+    w)	TLSLEVEL="${OPTARG}"
     	;;
 
     *)  usage
@@ -335,7 +345,7 @@ done
 shift `expr $OPTIND - 1`
 
 if [ $# -eq 2 ]; then
-    FSDIFFROOT=$2
+    FSDIFFROOT="$2"
 elif [ $# -ne 1 ]; then
     usage
 fi
@@ -345,7 +355,7 @@ cd "${WORKDIR:-$DEFAULTWORKDIR}"
 if [ ! -d "${RASHTMP}" ]; then
     mkdir -m 700 "${RASHTMP}"
     if [ $? -ne 0 ]; then
-        $ECHO "Cannot create temporary directory $RASHTMP" 
+        ${ECHO} "Cannot create temporary directory '${RASHTMP}'" 
 	exit 1
     fi
 fi
@@ -358,42 +368,42 @@ NETOPTS="-w ${TLSLEVEL} -h ${SERVER} -p ${PORT}"
 
 case "$1" in
 checkout)
-    if [ ${USER} = root ]; then
-	$ECHO -n "Username? [root] "
+    if [ "${USER}" = "root" ]; then
+	${ECHO} -n "Username? [root] "
 	read ans
-	USER=${ans:-root}
+	USER="${ans:-root}"
     fi
     checkedout
     if [ $? -eq 1 ]; then
-	$ECHO "Already checked out by ${OWNER}"
-	if [ x${OWNER} = x${USER} ]; then
+	${ECHO} "Already checked out by '${OWNER}'"
+	if [ "x${OWNER}" = "x${USER}" ]; then
 	    exit 1
 	fi
 	Yn "Force checkout?"
 	if [ $? -eq 0 ]; then
 	    exit 1
 	fi
-	$ECHO ${USER} has removed your checkout on `hostname` | mail -s `hostname`": Checkout broken" ${OWNER}@${MAILDOMAIN:-`hostname`}
+	${ECHO} ${USER} has removed your checkout on `hostname` | mail -s `hostname`": Checkout broken" ${OWNER}@${MAILDOMAIN:-`hostname`}
     fi
-    $ECHO ${USER} > ${CHECKEDOUT}
+    ${ECHO} "${USER}" > "${CHECKEDOUT}"
     ;;
 
 checkin)
     checkedout
     if [ $? -eq 0 ]; then
-	$ECHO "Not checked out"
+	${ECHO} "Not checked out"
 	exit 1
     fi
     if [ ${USER} = root ]; then
-	$ECHO -n "Username? [root] "
+	${ECHO} -n "Username? [root] "
 	read ans
-	USER=${ans:-root}
+	USER="${ans:-root}"
     fi
-    if [ x${OWNER} != x${USER} ]; then
-	$ECHO "Currently checked out by ${OWNER}"
+    if [ "x${OWNER}" != "x${USER}" ]; then
+	${ECHO} "Currently checked out by '${OWNER}'"
 	exit 1
     fi
-    rm ${CHECKEDOUT}
+    rm "${CHECKEDOUT}"
     ;;
 
 update|up)
@@ -411,10 +421,10 @@ create)
 	if [ $? -eq 1 ]; then
 	    ktcheck ${NETOPTS} -c sha1
 	    RC=$?
-	    if [ $RC -ne 1 ]; then
-		$ECHO Nothing to update
+	    if [ ${RC} -ne 1 ]; then
+		${ECHO} Nothing to update
 		cleanup
-		exit $RC
+		exit ${RC}
 	    fi
 	fi
 	;;
@@ -423,37 +433,37 @@ create)
    	exit $?
     	;;
     esac
-    $ECHO -n "Enter new transcript name [`hostname | cut -d. -f1`-`date +%Y%m%d`-${USER}.T]: "
+    ${ECHO} -n "Enter new transcript name [`hostname | cut -d. -f1`-`date +%Y%m%d`-${USER}.T]: "
     read TNAME
     if [ -z "${TNAME}" ]; then
 	TNAME=`hostname | cut -d. -f1`-`date +%Y%m%d`-${USER}.T
     fi
     FTMP="${RASHTMP}/${TNAME}"
-    fsdiff -C ${CASE} ${FPROGRESS} ${CHECKSUM} -o ${FTMP} ${FSDIFFROOT}
+    fsdiff -C ${CASE} ${FPROGRESS} ${CHECKSUM} ${FSDIFF_OPTS} -o "${FTMP}" "${FSDIFFROOT}"
     if [ $? -ne 0 ]; then
 	cleanup
 	exit 1;
     fi
-    if [ ! -s ${FTMP} ]; then
-	$ECHO Nothing to create.
+    if [ ! -s "${FTMP}" ]; then
+	${ECHO} Nothing to create.
 	cleanup
 	exit 1
     fi
-    Yn "Edit transcript ${TNAME}?"
+    Yn "Edit transcript '${TNAME}'?"
     if [ $? -eq 1 ]; then
-	${EDITOR} ${FTMP}
+	${EDITOR} "${FTMP}"
     fi
-    Yn "Store loadset ${TNAME}?"
+    Yn "Store loadset '${TNAME}'?"
     if [ $? -eq 1 ]; then
 	if [ -n "${USERAUTH}" ]; then
 	    if [ -z "${USERNAME}" ]; then
-		$ECHO -n "username: "
+		${ECHO} -n "username: "
 		read USERNAME
 	    fi
 	    USERNAME="-U ${USERNAME}"
 	fi
 	lcreate ${PROGRESS} ${NETOPTS} ${USERAUTH} ${USERAUTH:+USERNAME} \
-			${CHECKSUM} ${FTMP}
+			${CHECKSUM} "${FTMP}"
 	if [ $? -ne 0 ]; then
 	    cleanup
 	    exit 1
@@ -463,8 +473,8 @@ create)
     ;;
 
 trip)
-    if [ ! -f ${KFILE} ]; then
-	$ECHO Command file missing, skipping tripwire.
+    if [ ! -f "${KFILE}" ]; then
+	${ECHO} Command file missing, skipping tripwire.
 	cleanup
 	exit 1
     fi
@@ -474,7 +484,7 @@ trip)
     0)
 	;;
     1)
-	$ECHO Command file and/or transcripts are out of date.
+	${ECHO} Command file and/or transcripts are out of date.
 	;;
     *)
 	cleanup
@@ -482,14 +492,14 @@ trip)
 	;;
     esac
 
-    fsdiff -C ${CASE} ${CHECKSUM} -o ${FTMP} ${FSDIFFROOT}
+    fsdiff -C ${CASE} ${CHECKSUM} ${FSDIFF_OPTS} -o "${FTMP}" "${FSDIFFROOT}"
     if [ $? -ne 0 ]; then
 	cleanup
 	exit 1
     fi
-    if [ -s ${FTMP} ]; then
-	$ECHO Trip failure: `hostname`
-	cat ${FTMP}
+    if [ -s "${FTMP}" ]; then
+	${ECHO} Trip failure: `hostname`
+	cat "${FTMP}"
 	cleanup
 	exit 0
     fi
@@ -498,18 +508,18 @@ trip)
 auto)
     checkedout
     if [ $? -eq 1 ]; then
-	$ECHO "Checked out by ${OWNER}"
+	${ECHO} "Checked out by '${OWNER}'"
 	exit 1
     fi
-    fsdiff -C ${CASE} ${CHECKSUM} -o ${FTMP} ${FSDIFFROOT}
+    fsdiff -C ${CASE} ${CHECKSUM} ${FSDIFF_OPTS} -o "${FTMP}" "${FSDIFFROOT}"
     if [ $? -ne 0 ]; then
-	$ECHO Auto failure: `hostname` fsdiff
+	${ECHO} Auto failure: `hostname` fsdiff
 	cleanup
 	exit 1
     fi
-    if [ -s ${FTMP} ]; then
-	$ECHO Auto failure: `hostname` trip
-	cat ${FTMP}
+    if [ -s "${FTMP}" ]; then
+	${ECHO} Auto failure: `hostname` trip
+	cat "${FTMP}"
 	cleanup
 	exit 1
     fi
@@ -518,41 +528,41 @@ auto)
     ktcheck ${NETOPTS} -q -c sha1
     if [ $? -eq 1 ]; then
 	while true; do
-	    fsdiff -A ${CASE} ${CHECKSUM} -o ${FTMP} ${FSDIFFROOT}
+	    fsdiff -A ${CASE} ${CHECKSUM} ${FSDIFF_OPTS} -o "${FTMP}" "${FSDIFFROOT}"
 	    if [ $? -ne 0 ]; then
-		$ECHO Auto failure: `hostname`: fsdiff
+		${ECHO} Auto failure: `hostname`: fsdiff
 		cleanup
 		exit 1
 	    fi
-	    dopreapply ${FTMP}
-	    if [ -s ${FTMP} ]; then
+	    dopreapply "${FTMP}"
+	    if [ -s "${FTMP}" ]; then
 		lapply ${NETOPTS} ${CASE} ${PROGRESS} \
-			-q ${CHECKSUM} ${FTMP} 2>&1 > ${LTMP}
+			-q ${CHECKSUM} "${FTMP}" 2>&1 > "${LTMP}"
 		case $? in
 		0)
-		    $ECHO Auto update: `hostname`
-		    cat ${FTMP}
-		    dopostapply ${FTMP}
+		    ${ECHO} Auto update: `hostname`
+		    cat "${FTMP}"
+		    dopostapply "${FTMP}"
 		    cleanup
 		    break
 		    ;;
 
 		*)
 		    if [ ${RETRY} -gt 10000 ]; then
-			$ECHO Auto failure: `hostname`
-			cat ${LTMP}
+			${ECHO} Auto failure: `hostname`
+			cat "${LTMP}"
 			cleanup
 			exit 1
 		    fi
-		    $ECHO Auto failure: `hostname` retrying
-		    cat ${LTMP}
+		    ${ECHO} Auto failure: `hostname` retrying
+		    cat "${LTMP}"
 		    sleep ${RETRY}
 		    RETRY=${RETRY}0
 		    ktcheck ${NETOPTS} -q -c sha1
 		    ;;
 		esac
 	    else
-		$ECHO Nothing to apply.
+		${ECHO} Nothing to apply.
 		cleanup
 		exit 0
 	    fi
@@ -563,7 +573,7 @@ auto)
 force)
     checkedout
     if [ $? -eq 1 ]; then
-	$ECHO "Checked out by ${OWNER}"
+	${ECHO} "Checked out by ${OWNER}"
 	exit 1
     fi
     ktcheck ${NETOPTS} -c sha1
@@ -576,28 +586,29 @@ force)
 	;;
     esac
 
-    fsdiff -A ${CASE} ${FPROGRESS} ${CHECKSUM} -o ${FTMP} ${FSDIFFROOT}
+    fsdiff -A ${CASE} ${FPROGRESS} ${CHECKSUM} ${FSDIFF_OPTS} -o "${FTMP}" "${FSDIFFROOT}"
     if [ $? -ne 0 ]; then
 	cleanup
 	exit 1
     fi
 
-    if [ ! -s ${FTMP} ]; then
-	$ECHO Nothing to apply.
+    if [ ! -s "${FTMP}" ]; then
+	${ECHO} Nothing to apply.
 	cleanup
 	exit 0
     fi
     
-    dopreapply ${FTMP}
-    lapply ${CASE} ${PROGRESS} ${NETOPTS} ${CHECKSUM} ${FTMP}
-    case "$?" in
+    dopreapply "${FTMP}"
+    lapply ${CASE} ${PROGRESS} ${NETOPTS} ${CHECKSUM} "${FTMP}"
+    rc=$?
+    case "${rc}" in
     0)	;;
 
     *)	cleanup
-	    exit $?
+	    exit ${rc}
 	    ;;
     esac
-    dopostapply ${FTMP}
+    dopostapply "${FTMP}"
     
     cleanup
     ;;
@@ -605,7 +616,7 @@ force)
 hook)
     update hook
     rc=$?
-    while [ $rc -eq 1 ]; do
+    while [ ${rc} -eq 1 ]; do
 	update hook
 	rc=$?
     done

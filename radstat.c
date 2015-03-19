@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2013, 2014 by the Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -8,7 +8,7 @@
 #include <sys/types.h>
 #include <sys/param.h>
 #include <sys/stat.h>
-#ifdef __APPLE__
+#if defined(__APPLE__)
 #include <sys/paths.h>
 #include <sys/attr.h>
 #endif /* __APPLE__ */
@@ -30,7 +30,7 @@
     int
 radstat( const filepath_t *path, struct stat *st, char *type, struct applefileinfo *afinfo )
 {
-#ifdef __APPLE__
+#if defined(__APPLE__)
     static char			null_buf[ FINFOLEN ] = { 0 };
     extern struct attrlist 	getalist;
     extern struct attrlist 	getdiralist;
@@ -46,7 +46,7 @@ radstat( const filepath_t *path, struct stat *st, char *type, struct applefilein
 
     switch( st->st_mode & S_IFMT ) {
     case S_IFREG:
-#ifdef __APPLE__
+#if defined(__APPLE__)
 	/* Check to see if it's an HFS+ file */
 	if ( afinfo != NULL ) {
 	  if (( getattrlist( (const char *) path, &getalist, &afinfo->ai,
@@ -63,7 +63,7 @@ radstat( const filepath_t *path, struct stat *st, char *type, struct applefilein
 	break;
 
     case S_IFDIR:
-#ifdef __APPLE__
+#if defined(__APPLE__)
 	/* Get any finder info */
 	if ( afinfo != NULL ) {
 	  getattrlist( (const char *) path, &getdiralist, &afinfo->ai,
@@ -103,7 +103,7 @@ radstat( const filepath_t *path, struct stat *st, char *type, struct applefilein
 	return ( 1 );
     }
 
-#ifdef __APPLE__
+#if defined(__APPLE__)
     /* Calculate full size of applefile */
     if ( *type == 'a' ) {
 

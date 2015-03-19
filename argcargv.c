@@ -41,7 +41,7 @@ acav_alloc( void )
  */
 
     int
-acav_parse( ACAV *acav, char *line, char **argv[] )
+acav_parse( ACAV *acav, char *line, char **p_argv[] )
 {
     int		ac;
     int		state;
@@ -84,7 +84,7 @@ acav_parse( ACAV *acav, char *line, char **argv[] )
     }
 
     acav->acv_argv[ ac ] = NULL; 
-    *argv = acav->acv_argv;
+    *p_argv = acav->acv_argv;
     return( ac );
 }
 

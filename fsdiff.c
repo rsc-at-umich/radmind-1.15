@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2013 Regents off The University of Michigan.
+ * Copyright (c) 2003, 2013-2014 by the Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -27,8 +27,8 @@ void            (*logger)( char * ) = NULL;
 
 extern char	*version, *checksumlist;
 
-void		fs_walk( const unsigned char *, struct stat *, char *, struct applefileinfo *,
-	int, int, int );
+static void	fs_walk( const unsigned char *, struct stat *, char *, struct applefileinfo *,
+			 int, int, int );
 int		dodots = 0;
 int		dotfd;
 int		lastpercent = -1;
@@ -48,6 +48,8 @@ struct fs_list {
     char			fl_type;
     struct applefileinfo	fl_afinfo;
 };
+
+
 
     static struct fs_list *
 fs_insert( struct fs_list **head, struct fs_list *last,
@@ -81,8 +83,8 @@ fs_insert( struct fs_list **head, struct fs_list *last,
     return( new ); 
 }
 
-    void
-fs_walk( const unsigned char *path, struct stat *st, char *type, struct applefileinfo *afinfo,
+    static void
+fs_walk( const unsigned char *path, struct stat *st, char *p_type, struct applefileinfo *afinfo,
 	int start, int finish, int pdel ) 
 {
     DIR			*dir;
@@ -103,7 +105,7 @@ fs_walk( const unsigned char *path, struct stat *st, char *type, struct applefil
     }
 
     /* call the transcript code */
-    switch ( transcript_check( path, st, type, afinfo, pdel )) {
+    switch ( transcript_check( path, st, p_type, afinfo, pdel )) {
     case 2 :			/* negative directory */
 	for (;;) {
 	    tran = transcript_select();
@@ -123,6 +125,8 @@ fs_walk( const unsigned char *path, struct stat *st, char *type, struct applefil
 		case 1:
 		    fprintf( stderr, "%s is of an unknown type\n", (const char *) temp );
 		    exit( 2 );
+		    /* UNREACHABLE */
+
 		default:
 		    if (( errno != ENOTDIR ) && ( errno != ENOENT )) {
 		        perror( (const char *)path );
@@ -173,7 +177,7 @@ fs_walk( const unsigned char *path, struct stat *st, char *type, struct applefil
 
     /* open directory */
     if (( dir = opendir( "." )) == NULL ) {
-      perror( (const char *) path );
+        perror( (const char *) path );
 	exit( 2 );	
     }
 
@@ -197,12 +201,15 @@ fs_walk( const unsigned char *path, struct stat *st, char *type, struct applefil
 		&new->fl_afinfo )) {
 	case 0:
 	    break;
+
 	case 1:
 	    fprintf( stderr, "%s is of an unknown type\n", path );
 	    exit( 2 );
+	    /* UNREACHABLE */
+
 	default:
 	    if (( errno != ENOTDIR ) && ( errno != ENOENT )) {
-	      perror( (char *) path );
+	        perror( (char *) path );
 		exit( 2 );
 	    }
 	}
@@ -258,7 +265,7 @@ extern int optind, opterr, optopt;
 /*
  * Command-line options
  *
- * Formerly getopt - "%1ACc:IK:o:VvW"
+ * Formerly getopt - "B%1ACc:IK:o:VvW"
  */
 
 static const usageopt_t main_usage[] = 
@@ -293,6 +300,9 @@ static const usageopt_t main_usage[] =
     { (struct option) { "output",       required_argument, NULL, 'o' },
      		"Specify output transcript file", "output-file" },
 
+    { (struct option) { "metadata-check",       required_argument, NULL, 'M' },
+      		"enable(+) or disable(-) checking of transcript/file metadata", "{+|-}{uid|gid|mode|size|mtime}"},
+
     { (struct option) { "single-line",  no_argument,       NULL, '1' },
       		"prints out a single transcript line for the given file. Used to build negative transcripts. Implies '-C'", NULL },
     
@@ -326,6 +336,9 @@ main( int argc, char **argv )
     char               *main_optstr;
     char		type, buf[ MAXPATHLEN ];
     struct applefileinfo	afinfo;
+    char               *tc_switch_str;
+    int                 tc_switch;
+    char		tc_op;   /* '+' or '-' */
 
     /* Get our name from argv[0] */
     for (main_optstr = argv[0]; *main_optstr; main_optstr++) {
@@ -381,7 +394,7 @@ main( int argc, char **argv )
 	    break;
 
 	case 'K':
-	  kfile = (unsigned char *) optarg;
+	    kfile = (unsigned char *) optarg;
 	    break;
 
 	case '1':
@@ -407,9 +420,51 @@ main( int argc, char **argv )
 
 
 	case 'H':  /* --help */
-	  usageopt_usage (stdout, 1 /* verbose */, progname,  main_usage, "<path>", 80);
-	  exit (0);
+	    usageopt_usage (stdout, 1 /* verbose */, progname,  main_usage, "<path>", 80);
+	    exit (0);
 
+	case 'M': /* transcript_check() metadata switches */
+	    tc_op = *optarg;
+	    if ((tc_op != '+') && (tc_op != '-')) {
+	        fprintf( stderr, "%s: --metadata-check (-M) value must begin with '+' (on) or '-' (off)\n",
+			 progname);
+		errflag++;
+		break;
+	    }
+	    tc_switch_str = optarg + 1;
+	    
+	    /* should be table driven... */
+	    if (strncasecmp ("uid", tc_switch_str, 10) == 0) {
+	         tc_switch = RADTC_SWS_UID;
+	    }
+	    else if (strncasecmp ("gid", tc_switch_str, 10) == 0) {
+	         tc_switch = RADTC_SWS_GID;
+	    }
+	    else if (strncasecmp ("mode", tc_switch_str, 10) == 0) {
+	         tc_switch = RADTC_SWS_MODE;
+	    }
+	    else if (strncasecmp ("size", tc_switch_str, 10) == 0) {
+	         tc_switch = RADTC_SWS_SIZE;
+	    }
+	    else if (strncasecmp ("mtime", tc_switch_str, 10) == 0) {
+	         tc_switch = RADTC_SWS_MTIME;
+	    }
+	    else {
+	      fprintf (stderr, 
+		       "%s: --metadata-check option '%s' not 'uid', 'gid', 'mode', 'mtime', or 'size'\n",
+		       progname, tc_switch_str);
+	         errflag++;
+	    }
+
+	    if (errflag == 0) {
+	        if (tc_op == '+') {
+		    radmind_transcript_check_switches |= tc_switch; /* Turn switch ON */
+		}
+		else {
+		    radmind_transcript_check_switches &= ! tc_switch;  /* Turn switch OFF */
+		}
+	    }
+	    break;
 
 	case '?':
 	    printf( "bad option '%c'\n", c );

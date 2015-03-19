@@ -523,6 +523,7 @@ main( int argc, char **argv )
 	    exit( 2 );
 	}
 	linenum++;
+	targv = (char **) NULL; /* Saftey */
 	tac = argcargv( tline, &targv );
 
 	/* skips blank lines and comments */

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2014 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -21,7 +21,10 @@
 #include "pathcmp.h"
 #include "root.h"
 #include "filepath.h"
+#include "usageopt.h"
 
+char	       *progname = "lmerge";
+int		debug = 0;
 int		cksum = 1;
 int		verbose = 0;
 int		noupload = 0;
@@ -37,6 +40,7 @@ struct merge_node {
 
 static merge_node_t* merge_node_create( const filepath_t *path );
 static void merge_node_free( merge_node_t *node );
+static void lmerge_usage (FILE *out, int verbose);
 
    static merge_node_t *
 merge_node_create( const filepath_t *path )
@@ -242,7 +246,85 @@ cleanup:
     return( rc );
 }
 
+
 /*
+ * Command-line options
+ *
+ * Formerly getopt - "CD:fInTu:Vv"
+ *
+ * Remaining options: ""
+ */
+
+static const usageopt_t main_usage[] = 
+  {
+    { (struct option) { "copy-mode", no_argument, NULL, 'C' },
+      "Files listed in dest are copied from their original locations and are not linked", NULL},
+
+    { (struct option) { "case-insensitive", no_argument,   NULL, 'I' },
+     		"case insensitive when comparing paths", NULL },
+
+    { (struct option) { "radmind-directory",  required_argument, NULL, 'D' },
+	      "Specifiy the radmind working directory, by default "
+      		_RADMIND_PATH, "pathname"},
+
+    { (struct option) { "force", no_argument, NULL, 'f' },
+	      "Merge <transcript1> into <transcript2>", NULL },
+
+    { (struct option) { "negative", no_argument, NULL, 'n' },
+      	      "Merge two transcripts linking all files from the lowest precedence transcript",
+      	       NULL},
+
+    { (struct option) { "transcript-only", no_argument, NULL, 'T' },
+	      "Merge transcripts only. Do not perform file system linking.  May not be used with the -f",
+    	      NULL },
+    
+    { (struct option) { "umask",        required_argument,  NULL, 'u' },
+	      "specifies the umask for temporary files, by default 0077", "number" },
+
+    { (struct option) { "output",       required_argument, NULL, 'o' },
+     		"Specify output transcript file", "output-file" },
+
+    { (struct option) { "debug", no_argument, NULL, 'd'},
+      		"Raise debugging level to see what's happening", NULL},
+
+    { (struct option) { "verbose", no_argument, NULL, 'v' },
+      		"Turn on verbose mode", NULL },
+
+    { (struct option) { "help",         no_argument,       NULL, 'H' },
+     		"This message", NULL },
+    
+    { (struct option) { "version",      no_argument,       NULL, 'V' },
+     		"show version number", NULL },
+
+
+    /* End of list */
+    { (struct option) {(char *) NULL, 0, (int *) NULL, 0}, (char *) NULL, (char *) NULL}
+  }; /* end of main_usage[] */
+
+
+
+   static void
+   lmerge_usage (FILE *out, int verbose)
+{
+    usageopt_usage (out, verbose, progname,  main_usage,
+		    "[ <file> ]...", 80);
+    
+    fprintf( out, "Usage: %s [-vCIVT] [ -D path ] [ -u umask ] transcript... dest\n",
+	     progname );
+
+    fprintf( out, "       %s -f [-vCIV] [ -D path ] [ -u umask ] transcript1 transcript2\n",
+	     progname );
+
+    fprintf( out, "       %s -n [-vCIVT] [ -D path ] [ -u umask ] transcript1 transcript2 dest\n",
+	     progname );
+
+    return;
+} /* End of lmerge_usage() */
+
+
+
+/* Main 
+ *
  * exit codes:
  *	0  	okay	
  *	2	System error
@@ -270,24 +352,40 @@ main( int argc, char **argv )
     merge_node_t	*dirlist = NULL;
     FILE		*ofs;
     mode_t		mask;
+    int       		optndx = 0;
+    struct option	*main_opts;
+    char        	*main_optstr;
 
-    while ( ( c = getopt( argc, argv, "CD:fInTu:Vv" ) ) != EOF ) {
+    /* Get our name from argv[0] */
+    for (main_optstr = argv[0]; *main_optstr; main_optstr++) {
+        if (*main_optstr == '/')
+	    progname = main_optstr+1;
+    }
+
+    main_opts = usageopt_option_new (main_usage, &main_optstr);
+
+    while (( c = getopt_long (argc, argv, main_optstr, main_opts, &optndx)) != -1) {
 	switch( c ) {
 	case 'C':		/* copy files instead of using hardlinks */
 	    copy = 1;
 	    break;
+
 	case 'D':
 	    radmind_path = (filepath_t *) optarg;
 	    break;
+
 	case 'f':
 	    force = 1;
 	    break;
+
 	case 'I':
 	    case_sensitive = 0;
 	    break;
+
 	case 'n':
 	    noupload = 1;
 	    break;
+
 	case 'u':
 	    errno = 0;
 	    mask = (mode_t)strtol( optarg, (char **)NULL, 0 );
@@ -297,15 +395,25 @@ main( int argc, char **argv )
 	    }
 	    umask( mask );
 	    break;
+
+	case 'H':
+	    lmerge_usage (stdout, 1);
+	    exit (0);
+	    /* UNREACHABLE */
+
 	case 'V':
 	    printf( "%s\n", version );
 	    exit( 0 );
+	    /* UNREACHABLE */
+
 	case 'v':
 	    verbose = 1;
 	    break;
+
 	case 'T':
-		merge_trans_only = 1;
-		break;
+	    merge_trans_only = 1;
+	    break;
+
 	default:
 	    err++;
 	    break;
@@ -335,15 +443,7 @@ main( int argc, char **argv )
     }
 
     if ( err ) {
-	fprintf( stderr, "Usage: %s [-vCIVT] [ -D path ] [ -u umask ] ",
-	    argv[ 0 ] );
-	fprintf( stderr, "transcript... dest\n" );
-	fprintf( stderr, "       %s -f [-vCIV] [ -D path ] [ -u umask ] ",
-	    argv[ 0 ] );
-	fprintf( stderr, "transcript1 transcript2\n" );
-	fprintf( stderr, "       %s -n [-vCIVT] [ -D path ] [ -u umask ] ",
-	    argv[ 0 ] );
-	fprintf( stderr, "transcript1 transcript2 dest\n" );
+        lmerge_usage(stderr, 0);
 	exit( 2 );
     }
 

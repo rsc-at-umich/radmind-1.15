@@ -195,7 +195,7 @@ get_capabilities( SNET *sn )
     char		temp[ MAXPATHLEN ];
     char		**capa = NULL;
     int			i, ac;
-    char		**av;
+    char		**av = (char **) NULL;
     struct timeval	tv;
 
     while( 1 ) {
@@ -210,6 +210,7 @@ get_capabilities( SNET *sn )
 	}
 	if ( verbose ) printf( "<<< %s\n", line );
 	strcpy( temp, line+4 );
+	av = (char **) NULL; /* Safety */
 	if (( ac = argcargv( temp, &av )) != 0 ) {
 	    if ( strncasecmp( "CAPAbilities", av[0], MIN( 12, strlen( av[0] ))) == 0 ) {
 		capa = malloc( sizeof(char *)*ac );

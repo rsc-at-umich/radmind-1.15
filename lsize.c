@@ -39,6 +39,7 @@ lsize( char *tpath )
 
     while ( fgets( line, MAXPATHLEN * 2, tfp ) != NULL ) {
         linenum++;
+	tav = (char **) NULL; /* Safety */
         if (( tac = argcargv( line, &tav )) != 8 ) {
             continue;
         }
@@ -72,7 +73,7 @@ kfile_size( char *kfile, int location )
     char	line[ MAXPATHLEN ];
     char	fullpath[ MAXPATHLEN ];
     char	*subpath;
-    char	**av;
+    char	**av = (char **) NULL;
 
     if (( fp = fopen( kfile, "r" )) == NULL ) {
 	perror( kfile );
@@ -87,6 +88,7 @@ kfile_size( char *kfile, int location )
 	    return( -1 );
 	}
 
+	av = (char **) NULL;  /* Safety */
 	/* skips blank lines and comments */
 	if ((( ac = argcargv( line, &av )) == 0 ) || ( *av[ 0 ] == '#' )) {
 	    continue;

@@ -57,6 +57,9 @@ size_t                          transcript_buffer_size = 0; /* No buffering */
 unsigned int                    transcripts_buffered = 0;
 unsigned int                    transcripts_unbuffered = 0;
 
+/* switches governing the behavior of transcript_check() */
+int radmind_transcript_check_switches = RADTC_SWS_UID | RADTC_SWS_GID | RADTC_SWS_MTIME | RADTC_SWS_MODE | RADTC_SWS_SIZE;
+
 const static filepath_t * 
 convert_path_type( const filepath_t *path )
 {
@@ -112,7 +115,7 @@ transcript_parse( transcript_t *tran )
     char			line[ 2 * MAXPATHLEN ];
     int				length;
     const filepath_t		*epath;
-    char			**argv;
+    char			**av = (char **) NULL;
     int				ac;
     unsigned int                counted = 0;
 
@@ -163,7 +166,7 @@ transcript_parse( transcript_t *tran )
 		    tran->t_fullname, tran->t_linenum );
 	    exit( 2 );
 	} 
-    } while ((( ac = argcargv( line, &argv )) == 0 ) || ( *argv[ 0 ] == '#' ));
+    } while ((( ac = argcargv( line, &av )) == 0 ) || ( *av[ 0 ] == '#' ));
 
     if ( ac < 3 ) {
 	fprintf( stderr, "%s: line %d: minimum 3 arguments, got %d\n",
@@ -171,26 +174,26 @@ transcript_parse( transcript_t *tran )
 	exit( 2 );
     }
 
-    if ( strlen( argv[ 0 ] ) != 1 ) {
+    if ( strlen( av[ 0 ] ) != 1 ) {
 	fprintf( stderr, "%s: line %d: %s is too long to be a type\n",
-		tran->t_fullname, tran->t_linenum, argv[ 0 ] );
+		tran->t_fullname, tran->t_linenum, av[ 0 ] );
 	exit( 2 );
     }
 
-    if ( argv[ 0 ][ 0 ] == '-' ) {
-	argv++;
+    if ( av[ 0 ][ 0 ] == '-' ) {
+	av++;
 	ac--;
 	tran->t_pinfo.pi_minus = 1;
     } else {
 	tran->t_pinfo.pi_minus = 0;
     }
-    if ( argv[ 0 ][ 0 ] == '+' ) {
-	argv++;
+    if ( av[ 0 ][ 0 ] == '+' ) {
+	av++;
 	ac--;
     }
 
-    tran->t_pinfo.pi_type = argv[ 0 ][ 0 ];
-    if (( epath = (filepath_t *) decode( argv[ 1 ] )) == NULL ) {
+    tran->t_pinfo.pi_type = av[ 0 ][ 0 ];
+    if (( epath = (filepath_t *) decode( av[ 1 ] )) == NULL ) {
 	fprintf( stderr, "%s: line %d: path too long\n",
 		 (const char *) tran->t_fullname, tran->t_linenum );
 	exit( 2 );
@@ -221,7 +224,7 @@ transcript_parse( transcript_t *tran )
     memset (&(tran->t_pinfo.pi_stat), 0, sizeof(tran->t_pinfo.pi_stat));
 
     /* reading and parsing the line */
-    switch( *argv[ 0 ] ) {
+    switch( *av[ 0 ] ) {
     case 'd':				    /* dir */
 	if (( ac != 5 ) && ( ac != 6 )) {
 	    fprintf( stderr, "%s: line %d: expected 5 or 6 arguments, got %d\n",
@@ -229,11 +232,11 @@ transcript_parse( transcript_t *tran )
 	    exit( 2 );
 	}
 
-	tran->t_pinfo.pi_stat.st_mode = strtol( argv[ 2 ], NULL, 8 );
-	tran->t_pinfo.pi_stat.st_uid = atoi( argv[ 3 ] );
-	tran->t_pinfo.pi_stat.st_gid = atoi( argv[ 4 ] );
+	tran->t_pinfo.pi_stat.st_mode = strtol( av[ 2 ], NULL, 8 );
+	tran->t_pinfo.pi_stat.st_uid = atoi( av[ 3 ] );
+	tran->t_pinfo.pi_stat.st_gid = atoi( av[ 4 ] );
 	if ( ac == 6 ) {
-	    base64_d( argv[ 5 ], strlen( argv[ 5 ] ),
+	    base64_d( av[ 5 ], strlen( av[ 5 ] ),
 		    (filepath_t *)tran->t_pinfo.pi_afinfo.ai.ai_data );
 	} else {
 	    memset( tran->t_pinfo.pi_afinfo.ai.ai_data, 0, FINFOLEN );
@@ -248,9 +251,9 @@ transcript_parse( transcript_t *tran )
 		     (const char *) tran->t_fullname, tran->t_linenum, ac );
 	    exit( 2 );
 	}
-	tran->t_pinfo.pi_stat.st_mode = strtol( argv[ 2 ], NULL, 8 );
-	tran->t_pinfo.pi_stat.st_uid = atoi( argv[ 3 ] );
-	tran->t_pinfo.pi_stat.st_gid = atoi( argv[ 4 ] );
+	tran->t_pinfo.pi_stat.st_mode = strtol( av[ 2 ], NULL, 8 );
+	tran->t_pinfo.pi_stat.st_uid = atoi( av[ 3 ] );
+	tran->t_pinfo.pi_stat.st_gid = atoi( av[ 4 ] );
 	break;
 
     case 'b':				    /* block or char */
@@ -260,12 +263,12 @@ transcript_parse( transcript_t *tran )
 		    tran->t_fullname, tran->t_linenum, ac );
 	    exit( 2 );
 	}
-	tran->t_pinfo.pi_stat.st_mode = strtol( argv[ 2 ], NULL, 8 );
-	tran->t_pinfo.pi_stat.st_uid = atoi( argv[ 3 ] );
-	tran->t_pinfo.pi_stat.st_gid = atoi( argv[ 4 ] );
+	tran->t_pinfo.pi_stat.st_mode = strtol( av[ 2 ], NULL, 8 );
+	tran->t_pinfo.pi_stat.st_uid = atoi( av[ 3 ] );
+	tran->t_pinfo.pi_stat.st_gid = atoi( av[ 4 ] );
 	tran->t_pinfo.pi_stat.st_rdev =
-		makedev( ( unsigned )( atoi( argv[ 5 ] )), 
-		( unsigned )( atoi( argv[ 6 ] )));
+		makedev( ( unsigned )( atoi( av[ 5 ] )), 
+		( unsigned )( atoi( av[ 6 ] )));
 	break;
 
     case 'l':				    /* link */
@@ -274,15 +277,15 @@ transcript_parse( transcript_t *tran )
 	    tran->t_pinfo.pi_stat.st_uid = 0;
 	    tran->t_pinfo.pi_stat.st_gid = 0;
 	} else if ( ac == 6 ) { /* link with owner, group, mode */
-	    tran->t_pinfo.pi_stat.st_mode = strtol( argv[ 2 ], NULL, 8 );
-	    tran->t_pinfo.pi_stat.st_uid = atoi( argv[ 3 ] );
-	    tran->t_pinfo.pi_stat.st_gid = atoi( argv[ 4 ] );
+	    tran->t_pinfo.pi_stat.st_mode = strtol( av[ 2 ], NULL, 8 );
+	    tran->t_pinfo.pi_stat.st_uid = atoi( av[ 3 ] );
+	    tran->t_pinfo.pi_stat.st_gid = atoi( av[ 4 ] );
 	} else {
 	    fprintf( stderr, "%s: line %d: expected 3 or 6 arguments, got %d\n",
 		    tran->t_fullname, tran->t_linenum, ac );
 	    exit( 2 );
 	}
-	if (( epath = (filepath_t *) decode( argv[ ac - 1 ] )) == NULL ) {
+	if (( epath = (filepath_t *) decode( av[ ac - 1 ] )) == NULL ) {
 	    fprintf( stderr, "%s: line %d: target path too long\n",
 		tran->t_fullname, tran->t_linenum );
 	    exit( 2 );
@@ -297,7 +300,7 @@ transcript_parse( transcript_t *tran )
 		    tran->t_fullname, tran->t_linenum, ac );
 	    exit( 2 );
 	}
-	if (( epath = (filepath_t *) decode( argv[ 2 ] )) == NULL ) {
+	if (( epath = (filepath_t *) decode( av[ 2 ] )) == NULL ) {
 	    fprintf( stderr, "%s: line %d: target path too long\n",
 		tran->t_fullname, tran->t_linenum );
 	    exit( 2 );
@@ -318,19 +321,19 @@ transcript_parse( transcript_t *tran )
 		    tran->t_fullname, tran->t_linenum, ac );
 	    exit( 2 );
 	}
-	tran->t_pinfo.pi_stat.st_mode = strtol( argv[ 2 ], NULL, 8 );
-	tran->t_pinfo.pi_stat.st_uid = atoi( argv[ 3 ] );
-	tran->t_pinfo.pi_stat.st_gid = atoi( argv[ 4 ] );
-	tran->t_pinfo.pi_stat.st_mtime = atoi( argv[ 5 ] );
-	tran->t_pinfo.pi_stat.st_size = strtoofft( argv[ 6 ], NULL, 10 );
+	tran->t_pinfo.pi_stat.st_mode = strtol( av[ 2 ], NULL, 8 );
+	tran->t_pinfo.pi_stat.st_uid = atoi( av[ 3 ] );
+	tran->t_pinfo.pi_stat.st_gid = atoi( av[ 4 ] );
+	tran->t_pinfo.pi_stat.st_mtime = atoi( av[ 5 ] );
+	tran->t_pinfo.pi_stat.st_size = strtoofft( av[ 6 ], NULL, 10 );
 	if ( tran->t_type != T_NEGATIVE ) {
-	    if (( cksum ) && ( strcmp( "-", argv [ 7 ] ) == 0  )) {
+	    if (( cksum ) && ( strcmp( "-", av [ 7 ] ) == 0  )) {
 		fprintf( stderr, "%s: line %d: no cksums in transcript\n",
 			tran->t_fullname, tran->t_linenum );
 		exit( 2 );
 	    }
 	}
-	strncpy( tran->t_pinfo.pi_cksum_b64, argv[ 7 ],
+	strncpy( tran->t_pinfo.pi_cksum_b64, av[ 7 ],
 		 sizeof(tran->t_pinfo.pi_cksum_b64)-1 );
 
 	break;
@@ -338,7 +341,7 @@ transcript_parse( transcript_t *tran )
     default:
 	fprintf( stderr,
 	    "%s: line %d: unknown file type '%c'\n",
-	    tran->t_fullname, tran->t_linenum, *argv[ 0 ] );
+	    tran->t_fullname, tran->t_linenum, *av[ 0 ] );
 	exit( 2 );
     }
 
@@ -526,6 +529,14 @@ t_compare( pathinfo_t *fs, transcript_t *tran )
     mode_t		tran_mode;
     dev_t		dev;
 
+#define _TCC(_flag) ((radmind_transcript_check_switches & _flag) == _flag)
+#define _TCC_UID _TCC(RADTC_SWS_UID)
+#define _TCC_GID _TCC(RADTC_SWS_GID)
+#define _TCC_MTIME _TCC(RADTC_SWS_MTIME)
+#define _TCC_MODE _TCC(RADTC_SWS_MODE)
+#define _TCC_SIZE _TCC(RADTC_SWS_SIZE)
+#define _TCC_CKSUM _TCC(RADTC_SWS_CKSUM)
+
     /*
      * If the transcript is at EOF, and we've exhausted the filesystem,
      * just return T_MOVE_FS, as this will cause transcript_check() to return.
@@ -576,41 +587,51 @@ t_compare( pathinfo_t *fs, transcript_t *tran )
     case 'a':			    /* hfs applefile */
     case 'f':			    /* file */
 	if ( tran->t_type != T_NEGATIVE ) {
-	    if ( fs->pi_stat.st_size != tran->t_pinfo.pi_stat.st_size ) {
-		t_print( fs, tran, PR_DOWNLOAD );
-		break;
-	    }
-	    if ( cksum ) {
-		if ( fs->pi_type == 'f' ) {
-		    if ( do_cksum( fs->pi_name, fs->pi_cksum_b64 ) < 0 ) {
-		      perror( (const char *) fs->pi_name );
-			exit( 2 );
-		    }
-		} else if ( fs->pi_type == 'a' ) {
-		    if ( do_acksum( fs->pi_name, fs->pi_cksum_b64,
-			    &fs->pi_afinfo ) < 0 ) {
-		      perror( (const char *) fs->pi_name );
-			exit( 2 );
-		    }
-		}
-		if ( strcmp( fs->pi_cksum_b64, tran->t_pinfo.pi_cksum_b64 ) != 0 ) {
-		    t_print( fs, tran, PR_DOWNLOAD );
-		    break;
-		}
-	    } else if ( fs->pi_stat.st_mtime != tran->t_pinfo.pi_stat.st_mtime ) {
+	    if ( _TCC_SIZE && (fs->pi_stat.st_size != tran->t_pinfo.pi_stat.st_size )) {
 		t_print( fs, tran, PR_DOWNLOAD );
 		break;
 	    }
 
-	    if ( fs->pi_stat.st_mtime != tran->t_pinfo.pi_stat.st_mtime ) {
+	    if ( cksum ) {
+	        switch (fs->pi_type) {
+		default:
+		    /* Shouldn't happen. We'll pretent it can't. */
+		    break;
+
+		case 'f':
+		    if ( do_cksum( fs->pi_name, fs->pi_cksum_b64 ) < 0 ) {
+		        perror( (const char *) fs->pi_name );
+			exit( 2 );
+		    }
+		    break;
+
+		case 'a':
+		    if ( do_acksum( fs->pi_name, fs->pi_cksum_b64,
+			    &fs->pi_afinfo ) < 0 ) {
+		        perror( (const char *) fs->pi_name );
+			exit( 2 );
+		    }
+		    break;
+		} /* switch (fs->pi_type) */
+
+		if ( strcmp( fs->pi_cksum_b64, tran->t_pinfo.pi_cksum_b64 ) != 0 ) {
+		    t_print( fs, tran, PR_DOWNLOAD );
+		    break;
+		}
+	    } else if ( _TCC_MTIME && (fs->pi_stat.st_mtime != tran->t_pinfo.pi_stat.st_mtime )) {
+		t_print( fs, tran, PR_DOWNLOAD );
+		break;
+	    }
+
+	    if ( _TCC_MTIME && (fs->pi_stat.st_mtime != tran->t_pinfo.pi_stat.st_mtime )) {
 		t_print( fs, tran, PR_STATUS );
 		break;
 	    }
 	}
 
-	if (( fs->pi_stat.st_uid != tran->t_pinfo.pi_stat.st_uid ) || 
-		( fs->pi_stat.st_gid != tran->t_pinfo.pi_stat.st_gid ) ||
-		( mode != tran_mode )) {
+        if ( ( _TCC_UID && ( fs->pi_stat.st_uid != tran->t_pinfo.pi_stat.st_uid ) ) || 
+	     ( _TCC_GID && ( fs->pi_stat.st_gid != tran->t_pinfo.pi_stat.st_gid ) ) ||
+	     ( _TCC_MODE && ( mode != tran_mode ) ) ) {
 	    if (( tran->t_type == T_NEGATIVE ) && ( edit_path == APPLICABLE )) {
 		t_print( fs, tran, PR_STATUS_NEG );
 	    } else {
@@ -622,19 +643,19 @@ t_compare( pathinfo_t *fs, transcript_t *tran )
     case 'd':				/* dir */
 #ifdef __APPLE__
 	if ( tran->t_type != T_NEGATIVE ) {
-	    if (( fs->pi_stat.st_uid != tran->t_pinfo.pi_stat.st_uid ) ||
-		    ( fs->pi_stat.st_gid != tran->t_pinfo.pi_stat.st_gid ) ||
-		    ( memcmp( fs->pi_afinfo.ai.ai_data,
-		    tran->t_pinfo.pi_afinfo.ai.ai_data, FINFOLEN ) != 0 ) ||
-		    ( mode != tran_mode )) {
-		t_print( fs, tran, PR_STATUS );
+	    if ( ( _TCC_UID && ( fs->pi_stat.st_uid != tran->t_pinfo.pi_stat.st_uid ) ) ||
+		 ( _TCC_GID && ( fs->pi_stat.st_gid != tran->t_pinfo.pi_stat.st_gid ) ) ||
+		 ( memcmp( fs->pi_afinfo.ai.ai_data,
+			   tran->t_pinfo.pi_afinfo.ai.ai_data, FINFOLEN ) != 0 ) ||
+		 ( _TCC_MODE && ( mode != tran_mode ) ) ) {
+	        t_print( fs, tran, PR_STATUS );
 	    }
 	    break;
 	}
 #endif /* __APPLE__ */
-	if (( fs->pi_stat.st_uid != tran->t_pinfo.pi_stat.st_uid ) ||
-		( fs->pi_stat.st_gid != tran->t_pinfo.pi_stat.st_gid ) ||
-		( mode != tran_mode )) {
+	if ( ( _TCC_UID && ( fs->pi_stat.st_uid != tran->t_pinfo.pi_stat.st_uid ) ) ||
+	     ( _TCC_GID && ( fs->pi_stat.st_gid != tran->t_pinfo.pi_stat.st_gid ) ) ||
+	     ( _TCC_MODE && ( mode != tran_mode ) ) ) {
 	    t_print( fs, tran, PR_STATUS );
 	}
 	break;
@@ -642,9 +663,9 @@ t_compare( pathinfo_t *fs, transcript_t *tran )
     case 'D':
     case 'p':
     case 's':
-	if (( fs->pi_stat.st_uid != tran->t_pinfo.pi_stat.st_uid ) ||
-		( fs->pi_stat.st_gid != tran->t_pinfo.pi_stat.st_gid ) ||
-		( mode != tran_mode )) {
+        if ( ( _TCC_UID && ( fs->pi_stat.st_uid != tran->t_pinfo.pi_stat.st_uid ) ) ||
+	     ( _TCC_GID && ( fs->pi_stat.st_gid != tran->t_pinfo.pi_stat.st_gid ) ) ||
+	     ( _TCC_MODE && ( mode != tran_mode ) ) ) {
 	    t_print( fs, tran, PR_STATUS );
 	}
 	break;
@@ -653,11 +674,11 @@ t_compare( pathinfo_t *fs, transcript_t *tran )
 	if ( tran->t_type != T_NEGATIVE ) {
 	  if (( filepath_cmp( fs->pi_link, tran->t_pinfo.pi_link ) != 0 )
 #ifdef HAVE_LCHOWN
-		 || ( fs->pi_stat.st_uid != tran->t_pinfo.pi_stat.st_uid ) ||
-		    ( fs->pi_stat.st_gid != tran->t_pinfo.pi_stat.st_gid )
+	      || ( _TCC_UID && ( fs->pi_stat.st_uid != tran->t_pinfo.pi_stat.st_uid ) ) 
+	      || ( _TCC_GID && ( fs->pi_stat.st_gid != tran->t_pinfo.pi_stat.st_gid ) )
 #endif /* HAVE_LCHOWN */
 #ifdef HAVE_LCHMOD
-		 || ( mode != tran_mode )
+	      || ( _TCC_MODE && (mode != tran_mode ) )
 #endif /* HAVE_LCHMOD */
 	    /* strcmp */ ) {
 		t_print( fs, tran, PR_STATUS );
@@ -680,10 +701,10 @@ t_compare( pathinfo_t *fs, transcript_t *tran )
 	 */
 	dev = fs->pi_stat.st_rdev;
 	if ( tran->t_type != T_NEGATIVE ) {
-	    if (( fs->pi_stat.st_uid != tran->t_pinfo.pi_stat.st_uid ) ||
-		    ( fs->pi_stat.st_gid != tran->t_pinfo.pi_stat.st_gid ) || 
-		    ( dev != tran->t_pinfo.pi_stat.st_rdev ) ||
-		    ( mode != tran_mode )) {
+	    if ( ( _TCC_UID && ( fs->pi_stat.st_uid != tran->t_pinfo.pi_stat.st_uid ) ) ||
+		 ( _TCC_GID && ( fs->pi_stat.st_gid != tran->t_pinfo.pi_stat.st_gid ) ) || 
+		 ( dev != tran->t_pinfo.pi_stat.st_rdev ) ||
+		 ( _TCC_MODE && ( mode != tran_mode ) ) ) {
 		t_print( fs, tran, PR_STATUS );
 	    }
 	} else if ( dev != tran->t_pinfo.pi_stat.st_rdev ) {
@@ -693,10 +714,10 @@ t_compare( pathinfo_t *fs, transcript_t *tran )
 
     case 'b':
 	dev = fs->pi_stat.st_rdev;
-	if (( fs->pi_stat.st_uid != tran->t_pinfo.pi_stat.st_uid ) ||
-		( fs->pi_stat.st_gid != tran->t_pinfo.pi_stat.st_gid ) || 
-		( dev != tran->t_pinfo.pi_stat.st_rdev ) ||
-		( mode != tran_mode )) {
+	if ( ( _TCC_UID && ( fs->pi_stat.st_uid != tran->t_pinfo.pi_stat.st_uid ) ) ||
+	     ( _TCC_GID && ( fs->pi_stat.st_gid != tran->t_pinfo.pi_stat.st_gid ) ) || 
+	     ( dev != tran->t_pinfo.pi_stat.st_rdev ) ||
+	     ( _TCC_MODE && ( mode != tran_mode ) ) ) {
 	    t_print( fs, tran, PR_STATUS );
 	}	
 	break;
@@ -843,8 +864,9 @@ transcript_check( const filepath_t *path, struct stat *st, char *type,
 		(( linkpath = hardlink( &pi )) != NULL )) {
 	    pi.pi_type = 'h';
 	    strncpy( (char *) pi.pi_link, linkpath, sizeof(pi.pi_link)-1 );
+
 	} else if ( S_ISLNK( pi.pi_stat.st_mode )) {
-	  len = readlink( (const char *) pi.pi_name, epath, MAXPATHLEN );
+	    len = readlink( (const char *) pi.pi_name, epath, MAXPATHLEN );
 	    epath[ len ] = (filepath_t) '\0';
 	    strncpy( (char *) pi.pi_link, (const char *) epath , sizeof(pi.pi_link)-1);
 	}
@@ -857,7 +879,7 @@ transcript_check( const filepath_t *path, struct stat *st, char *type,
 	}
 
 	/* initialize cksum field. */
-	strncpy( pi.pi_cksum_b64, "-", sizeof(pi.pi_cksum_b64)-1 ); /* excessive */
+	strncpy( pi.pi_cksum_b64, "-", sizeof(pi.pi_cksum_b64)-1 ); /* excessive - but correct */
     }
 
     for (;;) {
@@ -1193,7 +1215,7 @@ read_kfile( const filepath_t *kfile, int location )
     filepath_t         *subpath;
     const filepath_t   *d_pattern,
       		       *path;
-    char	      **av;
+    char	      **av = (char **) NULL;
     FILE	       *fp;
     static int          depth = 0;
 
@@ -1217,6 +1239,8 @@ read_kfile( const filepath_t *kfile, int location )
 	    depth--;
 	    return( -1 );
 	}
+
+	av = (char **) NULL; /* Safety */
 
 	/* skips blank lines and comments */
 	if ((( ac = argcargv( line, &av )) == 0 ) || ( *av[ 0 ] == '#' )) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2013 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2013, 2014 by the Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -87,6 +87,16 @@ extern int	     transcript_check( const filepath_t *path,
 				       struct stat *st, char *type,
 				       struct applefileinfo *afinfo,
 				       int parent_minus);
+/* switches governing the behavior of "transcript_check()" */
+extern int radmind_transcript_check_switches;
+#define RADTC_SWS_UID	0x0001
+#define RADTC_SWS_GID	0x0002
+#define RADTC_SWS_MTIME	0x0004
+#define RADTC_SWS_MODE	0x0008
+#define RADTC_SWS_SIZE	0x0010
+#define RADTC_SWS_CKSUM	0x0020
+
+
 extern void	     transcript_init( const filepath_t *kfile, int location );
 extern transcript_t *transcript_select( void );
 extern void	     transcript_parse( transcript_t *tran );

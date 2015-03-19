@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2007 Regents of The University of Michigan.
+ * Copyright (c) 2006, 2007, 2014 Regents of The University of Michigan.
  * All Rights Reserved. See COPYRIGHT.
  */
 
@@ -34,12 +34,88 @@
 #include "connect.h"
 #include "report.h"
 #include "tls.h"
+#include "usageopt.h"
 
+char	               *progname = "repo";
 int			verbose = 0;
 extern struct timeval	timeout;
 extern char		*version;
 extern char		*caFile, *caDir, *cert, *privatekey;
 SSL_CTX			*ctx;
+
+static void repo_usage (FILE *out, int verbose);
+
+extern char *optarg;
+extern int optind, opterr, optopt;
+
+/*
+ * Command-line options
+ *
+ * Formerly getopt - "e:h:p:P:vVw:x:y:Z:z:"
+ *
+ * Remaining opts: "e:h:p:P:vVw:x:y:Z:z:"
+ */
+
+static const usageopt_t main_usage[] = 
+  {
+    { (struct option) { "event-name", required_argument, NULL, 'e' },
+	      "Set event report name (required)", "event-name" },
+
+    { (struct option) { "hostname",     required_argument, NULL, 'h' },
+      "Radmind server hostname to contact, defaults to '" _RADMIND_HOST "'", "domain-name" },
+
+    { (struct option) { "tcp-port",      required_argument, NULL, 'p'},
+      "TCP port on radmind server to connect to", "tcp-port#"}, 
+
+    { (struct option) { "ca-directory",  required_argument, NULL, 'P' },
+	      "Specify where 'ca.pem' can be found.", "pathname"},
+
+    { (struct option) { "authentication",  required_argument, NULL, 'w' },
+	      "Specify the authentication level", "number" },
+
+    { (struct option) { "ca-file",       required_argument, NULL, 'x' },
+	      "Specify the certificate authority file", "pem-file" },
+
+    { (struct option) { "cert",          required_argument, NULL, 'y' },
+	      "Certificate for authenticating client to radmind server", "pem-file"},
+
+    { (struct option) { "cert-key",      required_argument, NULL, 'z' },
+	      "Key file for --cert certificate", "key-file" },
+
+#if defined(HAVE_ZLIB)
+    { (struct option) { "zlib-level",   required_argument,   NULL, 'Z'},
+	      "Specify zlib compression level", "number"},
+#else
+    { (struct option) { "zlib-level",   required_argument,   NULL, 'Z'},
+	      "Not available", "(number)"},
+#endif /* defined(HAVE_ZLIB) */
+
+    { (struct option) { "help",         no_argument,       NULL, 'H' },
+     		"This message", NULL },
+    
+    { (struct option) { "version",      no_argument,       NULL, 'V' },
+     		"show version number, and a list of supported checksumming algorithms in descending order of preference and exits", NULL },
+    
+    { (struct option) { "verbose",           no_argument,       NULL, 'v' },
+     		"Be chatty", NULL },
+
+
+    /* End of list */
+    { (struct option) {(char *) NULL, 0, (int *) NULL, 0}, (char *) NULL, (char *) NULL}
+  }; /* end of main_usage[] */
+
+
+   static void
+   repo_usage (FILE *out, int verbose)
+{
+      usageopt_usage (out, verbose, progname,  main_usage,
+		      "[message]...", 80);
+
+      return;
+} /* End of repo_usage() */
+
+
+
 
     int
 main( int argc, char *argv[] )
@@ -54,8 +130,19 @@ main( int argc, char *argv[] )
     char		*event = NULL;
     char		repodata[ MAXPATHLEN * 2 ];
     char		**capa = NULL; /* server capabilities */
+    int       		optndx = 0;
+    struct option	*main_opts;
+    char        	*main_optstr;
 
-    while (( c = getopt( argc, argv, "e:h:p:P:vVw:x:y:Z:z:" )) != EOF ) {
+    /* Get our name from argv[0] */
+    for (main_optstr = argv[0]; *main_optstr; main_optstr++) {
+        if (*main_optstr == '/')
+	    progname = main_optstr+1;
+    }
+
+    main_opts = usageopt_option_new (main_usage, &main_optstr);
+
+    while (( c = getopt_long (argc, argv, main_optstr, main_opts, &optndx)) != -1) {
 	switch ( c ) {
 	case 'e':		/* event to report */
 	    event = optarg;
@@ -117,6 +204,11 @@ main( int argc, char *argv[] )
             exit( 1 );
 #endif /* HAVE_ZLIB */
 
+	case 'H': /* --help */
+	    repo_usage (stdout, 1);
+	    exit (0);
+	    /* UNREACHABLE */
+
 	default:
 	    err++;
 	    break;
@@ -129,11 +221,7 @@ main( int argc, char *argv[] )
     }
 
     if ( err || (( argc - optind ) < 0 )) {
-	fprintf( stderr, "usage: %s -e event [ -Vv ] ", argv[ 0 ] );
-	fprintf( stderr, "[ -h host ] [ -p port ] [ -P ca-pem-directory ] " );
-	fprintf( stderr, "[ -w auth-level ] [ -x ca-pem-file ] " );
-	fprintf( stderr, "[ -y cert-pem-file ] [ -z key-pem-file ] " );
-	fprintf( stderr, "[ -Z compression-level ] [ message ... ]\n" );
+        repo_usage (stderr, 0);
 	exit( 1 );
     }
 

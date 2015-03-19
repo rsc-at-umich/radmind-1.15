@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2014 by the Regents of The University of Michigan.
+ * All Rights Reserved.  See COPYRIGHT.
+ */
+
 #include "config.h"
 
 #include <sys/types.h>
@@ -12,15 +17,20 @@
 #include "argcargv.h"
 #include "code.h"
 #include "pathcmp.h"
+#include "usageopt.h"
 
-int	linecount;
-FILE	*outtran;
+size_t	linecount = 0;		   /* Pedantically set value */
+FILE	*outtran = (FILE *) NULL;  /* Pedantically set value */
 
 struct save_line {
     struct save_line 	*next;
     filepath_t 		*key;
     char  		*data;
 } *lines;
+
+char	               *progname = "lsort";
+int			verbose = 0;
+int			debug = 0;
 
 void 			save_it( const char *buffer, const filepath_t *pathname );
 static int 		lsort_cmp( const void *a1, const void *b1 );
@@ -63,7 +73,7 @@ sort_them( void )
 {
     struct save_line	**x, *sp, **y;
 
-    x = (struct save_line**) malloc( sizeof( *x ) * linecount );
+    x = (struct save_line**) calloc( linecount, sizeof( *x ) );
     y = x;
 
     for ( sp = lines; sp; sp = sp->next ) {
@@ -85,6 +95,7 @@ sort_them( void )
 print_them( void )
 {
     struct save_line *sp;
+
     for ( sp = lines; sp; sp = sp->next ) {
 	fputs( sp->data, outtran );
 	if ( ferror( outtran )) {
@@ -163,16 +174,62 @@ process( char *arg )
     acav_free( acav );
 }
 
+
+
+/*
+ * Command-line options
+ *
+ * Formerly getopt - "Io:V"
+ */
+
+static const usageopt_t main_usage[] = 
+  {
+    { (struct option) { "case-insensitive", no_argument,   NULL, 'I' },
+     		"case insensitive when comparing paths", NULL },
+
+    { (struct option) { "output",       required_argument, NULL, 'o' },
+     		"Specify output transcript file", "output-file" },
+
+    { (struct option) { "debug", no_argument, NULL, 'd'},
+      		"Raise debugging level to see what's happening", NULL},
+
+    { (struct option) { "verbose", no_argument, NULL, 'v' },
+      		"Turn on verbose mode", NULL },
+
+    { (struct option) { "help",         no_argument,       NULL, 'H' },
+     		"This message", NULL },
+    
+    { (struct option) { "version",      no_argument,       NULL, 'V' },
+     		"show version number", NULL },
+
+
+    /* End of list */
+    { (struct option) {(char *) NULL, 0, (int *) NULL, 0}, (char *) NULL, (char *) NULL}
+  }; /* end of main_usage[] */
+
+/* Main */
+
     int
 main( int argc, char **argv )
 {
     char	c;
     int		i, err = 0;
+    int         optndx = 0;
+    struct option *main_opts;
+    char        *main_optstr;
     extern char	*version;
 
     outtran = stdout;
 
-    while (( c = getopt( argc, argv, "Io:V" )) != EOF ) {
+    /* Get our name from argv[0] */
+    for (main_optstr = argv[0]; *main_optstr; main_optstr++) {
+        if (*main_optstr == '/')
+	    progname = main_optstr+1;
+    }
+
+    main_opts = usageopt_option_new (main_usage, &main_optstr);
+
+    while (( c = getopt_long (argc, argv, main_optstr, main_opts, &optndx)) != -1) {
 	switch( c ) {
 	case 'I':
 	    case_sensitive = 0;
@@ -189,6 +246,16 @@ main( int argc, char **argv )
 	    printf( "%s\n", version );
 	    exit( 0 );
 
+	case 'v':
+	    verbose ++;
+	    break;
+
+	case 'H':  /* --help */
+	    usageopt_usage (stdout, 1 /* verbose */, progname,  main_usage,
+			    "<transcript-file>", 80);
+	    exit (0);
+	    /* UNREACHABLE */
+
 	default:
 	    err++;
 	    break;
@@ -196,8 +263,8 @@ main( int argc, char **argv )
     }
 
     if ( err ) {
-	fprintf( stderr, "Usage: %s [ -IV ] ", argv[ 0 ] );
-	fprintf( stderr, "[ -o file ] [ files... ]\n" );
+        usageopt_usage (stderr, 0 /* not verbose */, progname,  main_usage,
+			"<transcript-file>", 80);
 	exit( 1 );
     }
 

@@ -157,8 +157,9 @@ precedent_transcript(const unsigned char *kfile, const unsigned char *file, int 
 
         if ( cmp > 0 ) {
 	    if (debug > 1)
-	    	fprintf (stderr, "*debug: file '%s' not found before in t:['%s'] from k:['%s'] line %d, ID=%u\n",
-			file, tran->t_shortname, tran->t_kfile, tran->t_linenum, tran->id);
+	    	fprintf (stderr,
+			 "*debug: file '%s' not found before in t:['%s'] from k:['%s'] line %d, ID=%u\n",
+			 file, tran->t_shortname, tran->t_kfile, tran->t_linenum, tran->id);
             continue;
         }
 
@@ -361,11 +362,11 @@ static const usageopt_t main_usage[] =
     { (struct option) { "verbose", no_argument, NULL, 'v' },
       		"Turn on verbose mode", NULL },
 
-    { (struct option) { "help",         no_argument,       NULL, 'H' },
-     		"This message", NULL },
-    
     { (struct option) { "version",      no_argument,       NULL, 'V' },
      		"show version number of lfdiff and exits", NULL },
+    
+    { (struct option) { "help",         no_argument,       NULL, 'H' },
+     		"This message", NULL },
     
     { (struct option) { "umask",        required_argument,  NULL, 'u' },
 	      "specifies the umask for temporary files, by default 0077", "number" },
@@ -383,7 +384,7 @@ static const usageopt_t main_usage[] =
     { (struct option) { "expand-tabs", no_argument, NULL, 't' },
 	      "(diff option -t)", NULL},
 
-    { (struct option) { NULL, no_argument, NULL, 'c' },
+    { (struct option) { "context-only", no_argument, NULL, 'c' },
 	      "(diff option -c - but no NUM)", NULL},
     
     { (struct option) { "ed", no_argument, NULL, 'e' },
@@ -437,7 +438,7 @@ main( int argc, char **argv, char **envp )
     filepath_t		*kfile = (filepath_t *) _RADMIND_COMMANDFILE;
     char		*diff = _PATH_GNU_DIFF;
     char		**diffargv;
-    char		**argcargv;
+    char		**av = (char **) NULL;
     filepath_t 		pathdesc[ 2 * MAXPATHLEN ];
     filepath_t 		*path = (filepath_t *) "/tmp/lfdiff";
     filepath_t 		temppath[ MAXPATHLEN ];
@@ -616,8 +617,9 @@ main( int argc, char **argv, char **envp )
 
 	    break;
 
-	case 'X':
-	    if (( tac = argcargv( opt, &argcargv )) < 0 ) {
+	case 'X':  /* --diff-opts */
+	    av = (char **) NULL;  /* safety */
+	    if (( tac = argcargv( optarg, &av )) < 0 ) {
 		err++;
 	    }
 	    if (( diffargv = (char **)realloc( diffargv, ( sizeof( *diffargv )
@@ -626,7 +628,7 @@ main( int argc, char **argv, char **envp )
 		exit( 2 );
 	    }
 	    for ( i = 0; i < tac; i++ ) {
-		diffargv[ diffargc++ ] = argcargv[ i ];
+		diffargv[ diffargc++ ] = av[ i ];
 
 	        if (debug)
 		    fprintf (stderr, "*debug: diffargc = %d, diffargc[%d] = '%s'\n", diffargc,
@@ -636,9 +638,9 @@ main( int argc, char **argv, char **envp )
 	    break;
 
 	case 'H':  /* --help */
-	  usageopt_usage (stdout, 1 /* verbose */, progname,  main_usage,
-			  "<file>", 80);
-	  exit (0);
+	    usageopt_usage (stdout, 1 /* verbose */, progname,  main_usage,
+			    "<file>", 80);
+	    exit (0);
 
 	case '?':
 	    err++;
