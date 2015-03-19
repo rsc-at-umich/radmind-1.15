@@ -4,7 +4,7 @@
  * A library to improve getopt_long() by making a usage function easier
  * to write.
  * 
- * Copyright (c) 2013 by the Regents of the University of Michigan 
+ * Copyright (c) 2013, 2014 by the Regents of the University of Michigan 
  * All Rights reservered. 
  *
  * Original Author:  Richard S. Conto <rsc@umich.edu> 
@@ -20,7 +20,7 @@
 #include <ctype.h>
 #include <sys/types.h>
 #include <errno.h>
-
+#include <limits.h>  /* for LLONG_MAX and LLONG_MIN */
 #include <getopt.h>
 
 
@@ -83,7 +83,9 @@ usageopt_option_new (const usageopt_t *list, char **p_optstr)
      /* Determine the size of the options. */
      for (size_list = 0, each = list; ! usageopt_is_last_option(each); each++)
        {
-	 size_list ++;
+	 if (each->longopt.name != (char *) NULL) 
+	   size_list ++;
+
 	 if (each->longopt.val != '\0')
 	   {
 	     size_optstr ++;
@@ -130,17 +132,22 @@ usageopt_option_new (const usageopt_t *list, char **p_optstr)
      /*
       * Fill the calloc'd (struct options) *new list and the option string.
       */
-     for (optndx = 0, put = new, each = list; ! usageopt_is_last_option(each); each++, put++, optndx++)
+     for (optndx = 0, put = new, each = list; ! usageopt_is_last_option(each); each++, optndx++)
        {
 	 /*
-	  * Straightforward copy of (struct option) from optusage_t to new array.
+	  * If (struct option).name is NULL, it confuses getopt_long() into terminating
+	  * the search.
 	  */
-	 memcpy ((void *) put, (void *) &(each->longopt), sizeof (*put));
-
+	 if (each->longopt.name != (char *) NULL)
+	   {
+	     memcpy ((void *) put, (void *) &(each->longopt), sizeof (*put));
+	   
 #if defined(_LOGERROR_H)
-	 debug (2, _func, __FILE__, __LINE__, "Option #%d: -%c, --%s",
-		optndx, each->longopt.val, each->longopt.name);
+	     debug (2, _func, __FILE__, __LINE__, "Option #%d: -%c, --%s",
+		    optndx, each->longopt.val, each->longopt.name);
 #endif /* _LOGERROR_H */
+	   }
+	 
 
 	 if (each->longopt.val != '\0')
 	   {
@@ -181,8 +188,14 @@ usageopt_option_new (const usageopt_t *list, char **p_optstr)
 	       } /* switch (each->longopt.has_arg) */
 	     *optput = '\0';
 	   }
-       }
 
+	 /* Delayed conditional increment. */
+	 if (each->longopt.name != (char *) NULL)
+	   put++;
+
+       } /* for (optndx = 0, put = new; ...) */
+     
+     /* Zap the terminal 'struct option' */
      memset ((void *) put, 0, sizeof (*put));
 
      if (p_optstr != (char **) NULL)
@@ -445,3 +458,159 @@ usageopt_usage (FILE *out, unsigned int verbose, const char *progname,
     return;
 
 } /* end of usageopt_usage () */
+
+
+/* Strange little utility routines. */
+
+/* strscaledtoll() - allows suffices like 'M', 'G', 'K' to strings as follows:
+ * 'T' - 1024**4 
+ * 't' - 1000**4
+ * 'G' - 1024**3
+ * 'g' - 1000**3
+ * 'M' - 1024**2
+ * 'm' - 1000**2
+ * 'K' - 1024
+ * 'k' - 1000
+ */
+
+long long strscaledtoll (const char *src, char **p_endstr, int base)
+{
+    long long res;
+    long long range;
+    unsigned long scale = 1;
+    char *tmp = (char *) NULL;
+
+    if (src == (char *) NULL)
+      {
+	if (p_endstr)
+	  *p_endstr = (char *) NULL;
+
+	errno = EINVAL;
+	return (0);
+      }
+
+    res = strtoll (src, &tmp, base);
+
+    /* Check for failure... */
+    if (src == tmp)
+      {
+	if (p_endstr)
+	  *p_endstr = tmp;
+
+	return (res);
+      }
+    
+    /* Check for unscaled success. */
+    if (*tmp == '\0')
+      {
+	if (p_endstr)
+	  *p_endstr = tmp;
+
+	return (res);
+      }
+
+    switch (*tmp) {
+    default:
+      break;
+
+    case 'k': 
+      scale = 1000;
+      tmp++;
+      break;
+
+    case 'K': 
+      scale = 1024;
+      tmp++;
+      break;
+
+    case 'm': 
+      scale = 1000 * 1000;
+      tmp++;
+      break;
+
+    case 'M': 
+      scale = 1024 * 1024;
+      tmp++;
+      break;
+
+    case 'g': 
+      scale = 1000 * 1000 * 1000;
+      tmp++;
+      break;
+
+    case 'G': 
+      scale = 1024 * 1024 * 1024;
+      tmp++;
+      break;
+
+    case 't': 
+      scale = 1000L * 1000L * 1000L * 1000L;
+      tmp++;
+      break;
+
+    case 'T': 
+      scale = 1024L * 1024L * 1024L * 1024L;
+      tmp++;
+      break;
+
+    }; /* switch (*tmp) */
+
+    if (p_endstr)
+      *p_endstr = tmp;
+
+    if ((scale != 1) && (res != 0))
+      {
+	if (res > 0)
+	  {
+	    range = LLONG_MAX / scale;
+	    if (res > range)
+	      {
+		errno = ERANGE;
+		return (LLONG_MAX);
+	      }
+	  }
+	else /* res is negative. */
+	  {
+	    range = LLONG_MIN / scale;
+	    if (res < range)
+	      {
+		errno = ERANGE;
+		return (LLONG_MIN);
+	      }
+	  }
+      }
+
+    return (res * scale);
+
+} /* end of long long strscaledtoll(src, p_endstr, base) */
+
+
+/* strscaledtol() - allows suffices like 'M', 'G', 'K' to strings as follows:
+ * 'T' - 1024**4 
+ * 't' - 1000**4
+ * 'G' - 1024**3
+ * 'g' - 1000**3
+ * 'M' - 1024**2
+ * 'm' - 1000**2
+ * 'K' - 1024
+ * 'k' - 1000
+ */
+
+long strscaledtol (const char *src, char **p_endstr, int base)
+{
+    long long res = strscaledtoll (src, p_endstr, base);
+
+    if (res > LONG_MAX)
+      {
+	errno = ERANGE;
+	return (LONG_MAX);
+      }
+    else if (res < LONG_MIN)
+      {
+	errno = ERANGE;
+	return  (LONG_MIN);
+      }
+
+    return (res);
+
+} /* end of strscaledtol(src, p_endstr, base) */

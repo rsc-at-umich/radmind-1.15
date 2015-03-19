@@ -24,6 +24,10 @@
 #include "cksum.h"
 #include "base64.h"
 
+size_t rad_fcksum_bufsize	= DEFAULT_RAD_CKSUM_BUFSIZE;
+size_t rad_cksum_bufsize	= DEFAULT_RAD_CKSUM_BUFSIZE;
+size_t rad_acksum_bufsize	= DEFAULT_RAD_CKSUM_BUFSIZE;
+
 /*
  * do_cksum calculates the checksum for PATH and returns it base64 encoded
  * in cksum_b64 which must be of size SZ_BASE64_E( EVP_MAX_MD_SIZE ).
@@ -33,23 +37,31 @@
  *	>= 0	number of bytes check summed
  */
 
-    off_t 
-do_fcksum( int fd, char *cksum_b64 )
+static off_t do_fcksum_size( int fd, char *cksum_b64, size_t bufsize);
+
+    static off_t 
+do_fcksum_size( int fd, char *cksum_b64, size_t bufsize )
 {
     unsigned int	md_len;
     ssize_t		rr;
     off_t		size = 0;
-    unsigned char	buf[ 8192 ];
+    unsigned char	*p_buf;
     extern EVP_MD	*md;
     EVP_MD_CTX		mdctx;
     unsigned char 	md_value[ EVP_MAX_MD_SIZE ];
 
     EVP_DigestInit( &mdctx, md );
 
-    while (( rr = read( fd, buf, sizeof( buf ))) > 0 ) {
-	size += rr;
-	EVP_DigestUpdate( &mdctx, buf, (unsigned int)rr );
+    if ((p_buf = (unsigned char *) malloc (bufsize)) == (unsigned char *) NULL) {
+        return (-1);
     }
+
+    while (( rr = read( fd, p_buf, bufsize)) > 0 ) {
+	size += rr;
+	EVP_DigestUpdate( &mdctx, p_buf, (unsigned int)rr );
+    }
+    free (p_buf);
+
     if ( rr < 0 ) {
 	return( -1 );
     }
@@ -61,6 +73,14 @@ do_fcksum( int fd, char *cksum_b64 )
 }
 
     off_t
+do_fcksum( int fd, char *cksum_b64)
+{
+    return do_fcksum_size(fd, cksum_b64, rad_fcksum_bufsize);
+}
+
+
+
+    off_t
 do_cksum( const filepath_t *path, char *cksum_b64 )
 {
     int			fd;
@@ -70,7 +90,7 @@ do_cksum( const filepath_t *path, char *cksum_b64 )
 	return( -1 );
     }
 
-    size = do_fcksum( fd, cksum_b64 );
+    size = do_fcksum_size( fd, cksum_b64, rad_cksum_bufsize );
 
     if ( close( fd ) != 0 ) {
 	return( -1 );
@@ -97,8 +117,8 @@ do_cksum( const filepath_t *path, char *cksum_b64 )
 do_acksum( const filepath_t *path, char *cksum_b64, struct applefileinfo *afinfo )
 {
     int		    	    	dfd, rfd, rc;
-    char			buf[ 8192 ];
-    filepath_t               rsrc_path[ MAXPATHLEN ];
+    char			*p_buf;
+    filepath_t                  rsrc_path[ MAXPATHLEN ];
     off_t			size = 0;
     extern struct as_header	as_header;
     struct as_entry		as_entries_endian[ 3 ];
@@ -108,6 +128,10 @@ do_acksum( const filepath_t *path, char *cksum_b64, struct applefileinfo *afinfo
     unsigned char       	md_value[ EVP_MAX_MD_SIZE ];
 
     EVP_DigestInit( &mdctx, md ); 
+
+    if ((p_buf = (unsigned char *) malloc (rad_acksum_bufsize)) == (unsigned char *) NULL) {
+        return (-1);
+    }
 
     /* checksum applesingle header */
     EVP_DigestUpdate( &mdctx, (char *)&as_header, AS_HEADERLEN );
@@ -133,33 +157,41 @@ do_acksum( const filepath_t *path, char *cksum_b64, struct applefileinfo *afinfo
     if ( afinfo->as_ents[ AS_RFE ].ae_length > 0 ) {
       if ( snprintf( (char *) rsrc_path, MAXPATHLEN, "%s%s",
 		     (const char *) path, _PATH_RSRCFORKSPEC ) >= MAXPATHLEN ) {
+	    free (p_buf);
             errno = ENAMETOOLONG;
             return( -1 );
         }
 
         if (( rfd = open( (const char *) rsrc_path, O_RDONLY )) < 0 ) {
+	    free (p_buf);
 	    return( -1 );
 	}
-	while (( rc = read( rfd, buf, sizeof( buf ))) > 0 ) {
-	    EVP_DigestUpdate( &mdctx, buf, (unsigned int)rc );
+	while (( rc = read( rfd, p_buf, rad_acksum_bufsize)) > 0 ) {
+	    EVP_DigestUpdate( &mdctx, p_buf, (unsigned int)rc );
 	    size += (size_t)rc;
 	}
+
 	if ( close( rfd ) < 0 ) {
+	    free (p_buf);
 	    return( -1 );
 	}
 	if ( rc < 0 ) {
+	    free (p_buf);
 	    return( -1 );
 	}
     }
 
     if (( dfd = open( (const char *) path, O_RDONLY, 0 )) < 0 ) {
+	free (p_buf);
 	return( -1 );
     }
     /* checksum data fork */
-    while (( rc = read( dfd, buf, sizeof( buf ))) > 0 ) {
-	EVP_DigestUpdate( &mdctx, buf, (unsigned int)rc );
+    while (( rc = read( dfd, p_buf, rad_acksum_bufsize)) > 0 ) {
+	EVP_DigestUpdate( &mdctx, p_buf, (unsigned int)rc );
 	size += (size_t)rc;
     }
+    free (p_buf);
+
     if ( rc < 0 ) {
 	return( -1 );
     }

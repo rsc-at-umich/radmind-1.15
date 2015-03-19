@@ -22,6 +22,7 @@
 #include "pathcmp.h"
 #include "radstat.h"
 #include "usageopt.h"
+#include "cksum.h"
 
 void            (*logger)( char * ) = NULL;
 
@@ -303,17 +304,21 @@ static const usageopt_t main_usage[] =
     { (struct option) { "metadata-check",       required_argument, NULL, 'M' },
       		"enable(+) or disable(-) checking of transcript/file metadata", "{+|-}{uid|gid|mode|size|mtime}"},
 
+    { (struct option) { "checksum-buffer-size", required_argument, NULL, 'S' },
+                "Buffer size for doing checksums on files", "8192+"},
+
     { (struct option) { "single-line",  no_argument,       NULL, '1' },
       		"prints out a single transcript line for the given file. Used to build negative transcripts. Implies '-C'", NULL },
     
     { (struct option) { "version",      no_argument,       NULL, 'V' },
      		"show version number of fsdiff, a list of supported checksumming algorithms in descending order of preference and exits", NULL },
     
-    { (struct option) { NULL,           no_argument,       NULL, 'v' },
-     		"Same as -%", NULL },
-
     { (struct option) { "warning",      no_argument,       NULL, 'W' },
      		"prints a warning to the standard error when encountering an object matching an exclude pattern.", NULL },
+
+    { (struct option) { NULL,           no_argument,       NULL, 'v' },
+      		"Same as -%", NULL },
+
 
     /* End of list */
     { (struct option) {(char *) NULL, 0, (int *) NULL, 0}, (char *) NULL, (char *) NULL}
@@ -339,6 +344,8 @@ main( int argc, char **argv )
     char               *tc_switch_str;
     int                 tc_switch;
     char		tc_op;   /* '+' or '-' */
+    long		new_bufsize;
+    char	       *strtol_end;
 
     /* Get our name from argv[0] */
     for (main_optstr = argv[0]; *main_optstr; main_optstr++) {
@@ -465,6 +472,32 @@ main( int argc, char **argv )
 		}
 	    }
 	    break;
+
+
+	case 'S':
+	    strtol_end = (char *) NULL;
+	    if (*optarg == '\0') {
+	        fprintf (stderr,
+			 "%s: --checksum-buffer-size requires digits\n", progname);
+		errflag++;
+	    }
+	    else {
+	        new_bufsize = strscaledtol (optarg, &strtol_end, 0);
+		if ((strtol_end != (char *) NULL) && (*strtol_end == '\0') &&
+		    (new_bufsize >= DEFAULT_RAD_CKSUM_BUFSIZE)) {
+
+		    rad_fcksum_bufsize = new_bufsize;
+		    rad_cksum_bufsize = new_bufsize;
+		    rad_acksum_bufsize = new_bufsize;
+		}
+		else {
+		  fprintf (stderr, 
+			   "%s: --checksum-buffer-size %s is invalid\n", progname, optarg);
+		  errflag++;
+		}	
+	    }
+	    break;
+
 
 	case '?':
 	    printf( "bad option '%c'\n", c );

@@ -109,7 +109,7 @@ precedent_transcript(const unsigned char *kfile, const unsigned char *file, int 
     /* verify that file exists on the local system */
     memset ((void *) &file_stat, 0, sizeof(file_stat));
     if ( lstat( (char *) file, &file_stat ) < 0 ) {
-      perror( (char *) file );
+        perror( (char *) file );
 	exit( 2 );
     }
 
@@ -574,8 +574,9 @@ main( int argc, char **argv, char **envp )
 #endif
 	case 'b': case 'c': case 'i': case 't':
 	case 'e': case 'n': case 's':
-	    if (( diffargv = (char **)realloc( diffargv, ( sizeof( *diffargv )
-		    + ( 2 * sizeof( char * ))))) == NULL ) {
+	  /* Add one element to diffargv[] */
+	  if (( diffargv = (char **)realloc( diffargv, (diffargc + 1) *
+					     sizeof(char *))) == NULL ) {
 		perror( "malloc" );
 		exit( 2 );
 	    }
@@ -587,17 +588,18 @@ main( int argc, char **argv, char **envp )
 		perror( "strdup" );
 		exit( 2 );
 	    };
-	    if (debug)
-		fprintf (stderr, "*debug: diffargc = %d, diffargc[%d] = '%s'\n", diffargc,
-			diffargc, diffargv[diffargc-1]);
-
+	    if (debug) {
+		fprintf (stderr, "*debug: diffargc = %d, diffargc[%d] = '%s'\n",
+			 diffargc, diffargc, diffargv[diffargc-1]);
+	    }
 	    break;
 
-	case 'C':
 
-	case 'D': 
-	    if (( diffargv = (char **)realloc( diffargv, ( sizeof( *diffargv )
-		    + ( 3 * sizeof( char * ))))) == NULL ) {
+	case 'C':  /* --context <something> */
+	case 'D':  /* --ifdef <something> */
+	  /* Add two elements to diffargv */
+	  if (( diffargv = (char **)realloc( diffargv, (diffargc + 2) *
+					     sizeof(char *))) == NULL ) {
 		perror( "malloc" );
 		exit( 2 );
 	    }
@@ -608,13 +610,18 @@ main( int argc, char **argv, char **envp )
 	    if (( diffargv[ diffargc++ ] = strdup( opt )) == NULL ) {
 		perror( "strdup" );
 		exit( 2 );
-	    };
+	    }
+	    if (debug) {
+	       fprintf (stderr, "*debug: diffargc = %d, diffargc[%d] = '%s'\n",
+			diffargc, diffargc, diffargv[diffargc-1]);
+	    }
+
 	    diffargv[ diffargc++ ] = optarg;
 
-	    if (debug)
+	    if (debug) {
 		fprintf (stderr, "*debug: diffargc = %d, diffargc[%d] = '%s'\n", diffargc,
 			diffargc, diffargv[diffargc-1]);
-
+	    }
 	    break;
 
 	case 'X':  /* --diff-opts */
@@ -622,8 +629,9 @@ main( int argc, char **argv, char **envp )
 	    if (( tac = argcargv( optarg, &av )) < 0 ) {
 		err++;
 	    }
-	    if (( diffargv = (char **)realloc( diffargv, ( sizeof( *diffargv )
-		    + ( tac * sizeof( char * ))))) == NULL ) {
+	    /* Add a bunch (tac) elements to diffargv[] */
+	    if (( diffargv = (char **)realloc( diffargv, (diffargc + tac) *
+					       sizeof(char *))) == NULL ) {
 		perror( "malloc" );
 		exit( 2 );
 	    }
@@ -631,8 +639,8 @@ main( int argc, char **argv, char **envp )
 		diffargv[ diffargc++ ] = av[ i ];
 
 	        if (debug)
-		    fprintf (stderr, "*debug: diffargc = %d, diffargc[%d] = '%s'\n", diffargc,
-			diffargc, diffargv[diffargc-1]);
+		    fprintf (stderr, "*debug: diffargc = %d, diffargc[%d] = '%s'\n",
+			     diffargc, diffargc, diffargv[diffargc-1]);
 
 	    }
 	    break;
@@ -833,6 +841,7 @@ main( int argc, char **argv, char **envp )
 
     execve( diff, diffargv, envp );
 
+    /* Unreachable ... probably. */
     perror( diff );
     exit( 2 );
 }
