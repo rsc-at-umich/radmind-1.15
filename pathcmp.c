@@ -17,14 +17,14 @@
 #include "pathcmp.h"
 
     int
-pathcasecmp( const unsigned char *p1, const unsigned char *p2,
+pathcasecmp( const filepath_t *p1, const filepath_t *p2,
     int case_sensitive )
 {
     int		rc;
 
     do {
 	if ( case_sensitive ) {
-	    rc = ( (unsigned char)*p1 - (unsigned char)*p2 );
+	    rc = ( (filepath_t)*p1 - (filepath_t)*p2 );
 	} else {
 	    rc = ( tolower( *p1 ) - tolower( *p2 ));
 	}
@@ -46,14 +46,14 @@ pathcasecmp( const unsigned char *p1, const unsigned char *p2,
 
 /* Just like strcmp(), but pays attention to the meaning of '/'.  */
     int 
-pathcmp( const unsigned char *p1, const unsigned char *p2 )
+pathcmp( const filepath_t *p1, const filepath_t *p2 )
 {
     return( pathcasecmp( p1, p2, 1 ));
 }
 
     int
-ischildcase( const unsigned char *child, const unsigned char *parent, int
-    case_sensitive )
+ischildcase( const filepath_t *child, const filepath_t *parent, 
+	     int case_sensitive )
 {
     int		rc;
     size_t	parentlen;
@@ -63,9 +63,9 @@ ischildcase( const unsigned char *child, const unsigned char *parent, int
 	return( 1 );
     }
 
-    parentlen = strlen( parent );
+    parentlen = filepath_len( parent );
 
-    if ( parentlen > strlen( child )) {
+    if ( parentlen > filepath_len( child )) {
 	return( 0 );
     }
     if (( 1 == parentlen ) && ( '/' == *parent )) {
@@ -73,9 +73,9 @@ ischildcase( const unsigned char *child, const unsigned char *parent, int
     }
 
     if ( case_sensitive ) {
-	rc = strncmp( parent, child, parentlen );
+      rc = filepath_ncmp( parent, child, parentlen );
     } else {
-	rc = strncasecmp( parent, child, parentlen );
+      rc = filepath_ncasecmp( parent, child, parentlen );
     }
     if (( rc == 0 ) && (( '/' == child[ parentlen ] ) ||
 	    ( '\0' == child[ parentlen ] ))) {
@@ -85,7 +85,7 @@ ischildcase( const unsigned char *child, const unsigned char *parent, int
 }
 
     int
-ischild( const unsigned char *child, const unsigned char *parent )
+ischild( const filepath_t *child, const filepath_t *parent )
 {
     return( ischildcase( child, parent, 1 ));
 }

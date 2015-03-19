@@ -36,7 +36,6 @@
 #include "tls.h"
 
 int			verbose = 0;
-void			(*logger)( char * ) = NULL;
 extern struct timeval	timeout;
 extern char		*version;
 extern char		*caFile, *caDir, *cert, *privatekey;

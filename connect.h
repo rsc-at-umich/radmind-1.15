@@ -1,28 +1,42 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2013 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
-SNET * connectsn( char *host, unsigned short port );
-int closesn( SNET *sn );
-char **get_capabilities( SNET * );
-#ifdef HAVE_ZLIB
-int negotiate_compression( SNET *, char ** );
-int print_stats( SNET * );
+#if !defined(_RADMIND_CONNECT_H)
+#  define _RADMIND_CONNECT_H "$Id"
+
+#  include "filepath.h"
+#  include "applefile.h"
+ 
+extern SNET * connectsn( const char *host, unsigned short port );
+extern int    closesn( SNET *sn );
+extern char **get_capabilities( SNET *sn );
+
+#if defined(HAVE_ZLIB)
+extern int negotiate_compression( SNET *sn, char ** );
+extern int print_stats( SNET *sn );
 extern int zlib_level;
 #endif /* HAVE_ZLIB */
 
-int retr( SNET *sn, char *pathdesc, char *path, char *temppath,
-    mode_t tempmode, off_t transize, char *trancksum );
-int retr_applefile( SNET *sn, char *pathdesc, char *path, char *temppath,
-    mode_t tempmode, off_t transize, char *trancksum );
+extern int retr( SNET *sn, const filepath_t *pathdesc, const filepath_t *path,
+	   filepath_t *temppath, mode_t tempmode, off_t transize,
+	   const char *trancksum );
+extern int retr_applefile( SNET *sn, const filepath_t *pathdesc,
+	   const filepath_t *path, filepath_t *temppath, mode_t tempmode,
+	   off_t transize, const char *trancksum );
 
-int n_stor_file( SNET *sn, char *pathdesc, char *path );
-int stor_file( SNET *sn, char *pathdesc, char *path, off_t transize,
-    char *trancksum );
-int n_stor_applefile( SNET *sn, char *pathdesc, char *path );
-int stor_applefile( SNET *sn, char *pathdesc, char *path, off_t transize,
-    char *trancksum, struct applefileinfo *afinfo );
-int stor_response( SNET *sn, int *respcount, struct timeval * );
-void v_logger( char *string);
-int check_capability( char *type, char **capa );
+extern int n_stor_file( SNET *sn, const filepath_t *pathdesc, const filepath_t *path );
+extern int stor_file( SNET *sn, const filepath_t *pathdesc, const filepath_t *path,
+           off_t transize, const char *trancksum );
+extern int n_stor_applefile( SNET *sn, const filepath_t *pathdesc, const filepath_t *path );
+extern int stor_applefile( SNET *sn, const filepath_t *pathdesc, const filepath_t *path,
+	   off_t transize, const char *trancksum, struct applefileinfo *afinfo );
+extern int stor_response( SNET *sn, int *respcount, struct timeval * );
+
+extern void v_logger( const char *string);
+extern int  check_capability( const char *type, char **capa );
+
+extern void (*logger)( const char * );
+
+#endif /* defined(_RADMND_CONNECT_H) */

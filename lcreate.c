@@ -52,7 +52,6 @@
  * S: 250 File stored "\r\n"
  */
 
-void		(*logger)( char * ) = NULL;
 int		verbose = 0;
 int		dodots = 0;
 int		cksum = 0;
@@ -60,7 +59,6 @@ int		quiet = 0;
 int		linenum = 0;
 int		force = 0;
 extern off_t	lsize;
-extern int	showprogress;
 extern char	*version;
 extern char	*checksumlist;
 extern struct timeval   timeout;   
@@ -72,19 +70,27 @@ extern char             *caFile, *caDir, *cert, *privatekey;
     int
 main( int argc, char **argv )
 {
-    int			c, err = 0, tac; 
-    int			network = 1, len = 0, rc;
-    int			negative = 0, tran_only = 0;
-    int			respcount = 0;
+    int			c,
+      			err = 0,
+      			tac, 
+      			network = 1,
+      			len = 0,
+      			rc,
+      			negative = 0,
+      			tran_only = 0,
+      			respcount = 0;
     unsigned short	port = 0;
     extern int		optind;
     SNET          	*sn = NULL;
-    char		type;
-    char		*tname = NULL, *host = _RADMIND_HOST; 
-    char		*p,*d_path = NULL, tline[ 2 * MAXPATHLEN ];
-    char		pathdesc[ 2 * MAXPATHLEN ];
+    char		type,
+      			tline[ 2 * MAXPATHLEN ],
+      			cksumval[ SZ_BASE64_E( EVP_MAX_MD_SIZE ) ];
+    char		*tname = NULL,
+		        *host = _RADMIND_HOST,
+      			*p;
+    filepath_t  	pathdesc[ 2 * MAXPATHLEN ];
+    const char		*d_path = NULL;
     char		**targv;
-    char                cksumval[ SZ_BASE64_E( EVP_MAX_MD_SIZE ) ];
     extern char		*optarg;
     struct timeval	tv;
     FILE		*tran = NULL;
@@ -95,7 +101,7 @@ main( int argc, char **argv )
     int                 login = 0;
     char                *user = NULL;
     char                *password = NULL;
-	char               **capa = NULL; /* capabilities */
+    char               **capa = NULL; /* capabilities */
 
     while (( c = getopt( argc, argv, "%c:Fh:ilnNp:P:qrt:TU:vVw:x:y:z:Z:" ))
 	    != EOF ) {
@@ -353,13 +359,13 @@ main( int argc, char **argv )
         }
 
 	if ( cksum ) {
-	    if ( do_cksum( argv[ optind ], cksumval ) < 0 ) {
+	  if ( do_cksum( (filepath_t *) argv[ optind ], cksumval ) < 0 ) {
 		perror( tname );
 		exit( 2 );
 	    }
 	}
 
-	if ( snprintf( pathdesc, MAXPATHLEN * 2, "STOR TRANSCRIPT %s",
+	if ( snprintf( (char *) pathdesc, MAXPATHLEN * 2, "STOR TRANSCRIPT %s",
 		tname ) >= ( MAXPATHLEN * 2 )) {
 	    fprintf( stderr, "STOR TRANSCRIPT %s: path description too long\n",
 		tname );
@@ -377,7 +383,7 @@ main( int argc, char **argv )
 	lsize += st.st_size;
 
 	respcount += 2;
-	if (( rc = stor_file( sn, pathdesc, argv[ optind ], st.st_size,
+	if (( rc = stor_file( sn, pathdesc, (filepath_t *) argv[ optind ], st.st_size,
 		cksumval )) <  0 ) {
 	    goto stor_failed;
 	}
@@ -427,7 +433,7 @@ main( int argc, char **argv )
 
 	    if ( !negative ) {
 		/* Verify transcript line is correct */
-		if ( radstat( d_path, &st, &type, &afinfo ) != 0 ) {
+	        if ( radstat( (filepath_t *) d_path, &st, &type, &afinfo ) != 0 ) {
 		    perror( d_path );
 		    exit( 2 );
 		}
@@ -439,7 +445,7 @@ main( int argc, char **argv )
 
 	    if ( !network ) {
 		/* Check size */
-		if ( radstat( d_path, &st, &type, &afinfo ) != 0 ) {
+	        if ( radstat( (filepath_t *) d_path, &st, &type, &afinfo ) != 0 ) {
 		    perror( d_path );
 		    exit( 2 );
 		}
@@ -450,13 +456,13 @@ main( int argc, char **argv )
 		}
 		if ( cksum ) {
 		    if ( *targv[ 0 ] == 'f' ) {
-			if ( do_cksum( d_path, cksumval ) < 0 ) {
+		        if ( do_cksum( (filepath_t *) d_path, cksumval ) < 0 ) {
 			    perror( d_path );
 			    exit( 2 );
 			}
 		    } else {
 			/* apple file */
-			if ( do_acksum( d_path, cksumval, &afinfo ) < 0  ) {
+		        if ( do_acksum( (filepath_t *) d_path, cksumval, &afinfo ) < 0  ) {
 			    perror( d_path );
 			    exit( 2 );
 			}
@@ -474,7 +480,7 @@ main( int argc, char **argv )
 		    }
 		}
 	    } else {
-		if ( snprintf( pathdesc, MAXPATHLEN * 2, "STOR FILE %s %s", 
+	        if ( snprintf( (char *) pathdesc, MAXPATHLEN * 2, "STOR FILE %s %s", 
 			tname, targv[ 1 ] ) >= ( MAXPATHLEN * 2 )) {
 		    fprintf( stderr, "STOR FILE %s %s: path description too"
 			    " long\n", tname, d_path );
@@ -483,9 +489,9 @@ main( int argc, char **argv )
 
 		if ( negative ) {
 		    if ( *targv[ 0 ] == 'a' ) {
-			rc = n_stor_applefile( sn, pathdesc, d_path );
+		        rc = n_stor_applefile( sn, pathdesc, (filepath_t *) d_path );
 		    } else {
-			rc = n_stor_file( sn, pathdesc, d_path );
+		        rc = n_stor_file( sn, pathdesc, (filepath_t *) d_path );
 		    }
 		    respcount += 2;
 		    if ( rc < 0 ) {
@@ -494,11 +500,11 @@ main( int argc, char **argv )
 
 		} else {
 		    if ( *targv[ 0 ] == 'a' ) {
-			rc = stor_applefile( sn, pathdesc, d_path,
+		        rc = stor_applefile( sn, pathdesc, (filepath_t *) d_path,
 			    strtoofft( targv[ 6 ], NULL, 10 ), targv[ 7 ],
 			    &afinfo );
 		    } else {
-			rc = stor_file( sn, pathdesc, d_path, 
+		        rc = stor_file( sn, pathdesc, (filepath_t *) d_path, 
 			    strtoofft( targv[ 6 ], NULL, 10 ), targv[ 7 ]); 
 		    }
 		    respcount += 2;

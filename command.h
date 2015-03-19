@@ -1,11 +1,11 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2013 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
 int		cmdloop( int, struct sockaddr_in * );
-int		command_k( char *, int );
-char		**special_t( char *, char * );
+int		command_k( const unsigned char *path_config, int );
+char          **special_t( const unsigned char *transcript, const unsigned char *epath );
 int		keyword( int, char*[] );
 extern char	*path_radmind;
 

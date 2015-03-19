@@ -34,7 +34,6 @@
 #include "list.h"
 
 extern int	errno;
-extern int	showprogress;
 extern off_t	lsize;
 extern char	*version;
 
@@ -43,8 +42,6 @@ int		force = 0;
 int		case_sensitive = 1;
 int		verbose = 0;
 const EVP_MD    *md;
-
-void            (*logger)( char * ) = NULL;
 
 int copy_file( struct transcript *t, char *dst, char *src, int where );
 int local_update( struct transcript *t, char *dst, char *src, int where );

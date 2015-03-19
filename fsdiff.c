@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2013 Regents off The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -21,27 +21,29 @@
 #include "transcript.h"
 #include "pathcmp.h"
 #include "radstat.h"
+#include "usageopt.h"
 
 void            (*logger)( char * ) = NULL;
 
 extern char	*version, *checksumlist;
 
-void		fs_walk( char *, struct stat *, char *, struct applefileinfo *,
+void		fs_walk( const unsigned char *, struct stat *, char *, struct applefileinfo *,
 	int, int, int );
 int		dodots = 0;
 int		dotfd;
 int		lastpercent = -1;
 int		case_sensitive = 1;
 int		tran_format = -1; 
+char           *progname = "fsdiff";
 extern int	exclude_warnings;
 const EVP_MD    *md;
 
 static struct fs_list *fs_insert( struct fs_list **, struct fs_list *,
-	char *, int (*)( const char *, const char * ));
+	const unsigned char *, int (*)( const char *, const char * ));
 
 struct fs_list {
     struct fs_list		*fl_next;
-    char			*fl_name;
+    unsigned char		*fl_name;
     struct stat			fl_stat;
     char			fl_type;
     struct applefileinfo	fl_afinfo;
@@ -49,11 +51,11 @@ struct fs_list {
 
     static struct fs_list *
 fs_insert( struct fs_list **head, struct fs_list *last,
-	char *name, int (*cmp)( const char *, const char * ))
+	const unsigned char *name, int (*cmp)( const char *, const char * ))
 {
     struct fs_list	**current, *new;
 
-    if (( last != NULL ) && ( (*cmp)( name, last->fl_name ) > 0 )) {
+    if (( last != NULL ) && ( (*cmp)( (const char *) name, (const char *) last->fl_name ) > 0 )) {
 	current = &last->fl_next;
     } else {
 	current = head;
@@ -61,7 +63,7 @@ fs_insert( struct fs_list **head, struct fs_list *last,
 
     /* find where in the list to put the new entry */
     for ( ; *current != NULL; current = &(*current)->fl_next) {
-	if ( (*cmp)( name, (*current)->fl_name ) <= 0 ) {
+      if ( (*cmp)( (const char *) name, (const char *) (*current)->fl_name ) <= 0 ) {
 	    break;
 	}
     }
@@ -69,7 +71,7 @@ fs_insert( struct fs_list **head, struct fs_list *last,
     if (( new = malloc( sizeof( struct fs_list ))) == NULL ) {
 	return( NULL );
     }
-    if (( new->fl_name = strdup( name )) == NULL ) {
+    if (( new->fl_name = (unsigned char *) strdup( (const char *) name )) == NULL ) {
 	free( new );
 	return( NULL );
     }
@@ -80,7 +82,7 @@ fs_insert( struct fs_list **head, struct fs_list *last,
 }
 
     void
-fs_walk( char *path, struct stat *st, char *type, struct applefileinfo *afinfo,
+fs_walk( const unsigned char *path, struct stat *st, char *type, struct applefileinfo *afinfo,
 	int start, int finish, int pdel ) 
 {
     DIR			*dir;
@@ -90,7 +92,7 @@ fs_walk( char *path, struct stat *st, char *type, struct applefileinfo *afinfo,
     int			count = 0;
     int			del_parent;
     float		chunk, f = start;
-    char		temp[ MAXPATHLEN ];
+    unsigned char	temp[ MAXPATHLEN ];
     struct transcript	*tran;
     int			(*cmp)( const char *, const char * );
 
@@ -114,16 +116,16 @@ fs_walk( char *path, struct stat *st, char *type, struct applefileinfo *afinfo,
 		char			type0;
 		struct applefileinfo	afinfo0;
 
-		strcpy( temp, tran->t_pinfo.pi_name );
+		strncpy( (char *) temp, (const char *) tran->t_pinfo.pi_name, sizeof(temp)-1 );
 		switch ( radstat( temp, &st0, &type0, &afinfo0 )) {
 		case 0:
 		    break;
 		case 1:
-		    fprintf( stderr, "%s is of an unknown type\n", temp );
+		    fprintf( stderr, "%s is of an unknown type\n", (const char *) temp );
 		    exit( 2 );
 		default:
 		    if (( errno != ENOTDIR ) && ( errno != ENOENT )) {
-			perror( path );
+		        perror( (const char *)path );
 			exit( 2 );
 		    }
 		}
@@ -164,14 +166,14 @@ fs_walk( char *path, struct stat *st, char *type, struct applefileinfo *afinfo,
 	cmp = strcasecmp;
     }
 
-    if ( chdir( path ) < 0 ) {
-	perror( path );
+    if ( chdir( (const char *) path ) < 0 ) {
+      perror( (const char *) path );
 	exit( 2 );
     }
 
     /* open directory */
     if (( dir = opendir( "." )) == NULL ) {
-	perror( path );
+      perror( (const char *) path );
 	exit( 2 );	
     }
 
@@ -186,7 +188,7 @@ fs_walk( char *path, struct stat *st, char *type, struct applefileinfo *afinfo,
 
 	count++;
 
-	if (( new = fs_insert( &head, new, de->d_name, cmp )) == NULL ) {
+	if (( new = fs_insert( &head, new, (unsigned char *) de->d_name, cmp )) == NULL ) {
 	    perror( "malloc" );
 	    exit( 1 );
 	}
@@ -200,7 +202,7 @@ fs_walk( char *path, struct stat *st, char *type, struct applefileinfo *afinfo,
 	    exit( 2 );
 	default:
 	    if (( errno != ENOTDIR ) && ( errno != ENOENT )) {
-		perror( path );
+	      perror( (char *) path );
 		exit( 2 );
 	    }
 	}
@@ -218,20 +220,20 @@ fs_walk( char *path, struct stat *st, char *type, struct applefileinfo *afinfo,
 
     chunk = (( finish - start ) / ( float )count );
 
-    len = strlen( path );
+    len = strlen( (const char *) path );
 
     /* call fswalk on each element in the sorted list */
     for ( cur = head; cur != NULL; cur = next ) {
 	if ( path[ len - 1 ] == '/' ) {
-	    if ( snprintf( temp, MAXPATHLEN, "%s%s", path, cur->fl_name )
+	  if ( snprintf( (char *) temp, MAXPATHLEN, "%s%s", (const char *) path, (const char *) cur->fl_name )
 		    >= MAXPATHLEN ) {
-                fprintf( stderr, "%s%s: path too long\n", path, cur->fl_name );
+	    fprintf( stderr, "%s%s: path too long\n", (const char *) path, (const char *) cur->fl_name );
 		exit( 2 );
 	    }
 	} else {
-            if ( snprintf( temp, MAXPATHLEN, "%s/%s", path, cur->fl_name )
+	  if ( snprintf( (char *) temp, MAXPATHLEN, "%s/%s", (const char *) path, (const char *) cur->fl_name )
 		    >= MAXPATHLEN ) {
-                fprintf( stderr, "%s/%s: path too long\n", path, cur->fl_name );
+	    fprintf( stderr, "%s/%s: path too long\n", (const char *) path, (const char *) cur->fl_name );
                 exit( 2 );
             }
 	}
@@ -249,25 +251,104 @@ fs_walk( char *path, struct stat *st, char *type, struct applefileinfo *afinfo,
     return;
 }
 
-    int
+
+extern char *optarg;
+extern int optind, opterr, optopt;
+
+/*
+ * Command-line options
+ *
+ * Formerly getopt - "%1ACc:IK:o:VvW"
+ */
+
+static const usageopt_t main_usage[] = 
+  {
+    { (struct option) { "buffer-size", required_argument,  NULL, 'B' },
+      "Max size of transcript file to buffer in memory (reduces file descriptor usage)", "0-maxint"},
+
+    { (struct option) { "percentage",   no_argument,       NULL, '%' }, 
+     		"percentage done progress output. Requires -o option.", NULL }, 
+
+    { (struct option) { "applicable",   no_argument,       NULL, 'A' },
+     		"produces an applicable transcript (default)", NULL },
+
+    { (struct option) { "creatable",    no_argument,       NULL, 'C' },
+     		"produces a creatable transcript (vs. '-A')", NULL },
+
+    { (struct option) { "checksum",     required_argument, NULL, 'c' },
+      "specify checksum type",  "checksum-type: [sha1,etc]" },
+
+    { (struct option) { "case-insensitive", no_argument,   NULL, 'I' },
+     		"case insensitive when comparing paths", NULL },
+
+    { (struct option) { "command-file", required_argument, NULL, 'K' },
+                "Specify command file, defaults to '" _RADMIND_COMMANDFILE "'", "command.K" },
+
+    { (struct option) { "debug", no_argument, NULL, 'd'},
+      		"Raise debugging level to see what's happening", NULL},
+
+    { (struct option) { "help",         no_argument,       NULL, 'H' },
+     		"This message", NULL },
+    
+    { (struct option) { "output",       required_argument, NULL, 'o' },
+     		"Specify output transcript file", "output-file" },
+
+    { (struct option) { "single-line",  no_argument,       NULL, '1' },
+      		"prints out a single transcript line for the given file. Used to build negative transcripts. Implies '-C'", NULL },
+    
+    { (struct option) { "version",      no_argument,       NULL, 'V' },
+     		"show version number of fsdiff, a list of supported checksumming algorithms in descending order of preference and exits", NULL },
+    
+    { (struct option) { NULL,           no_argument,       NULL, 'v' },
+     		"Same as -%", NULL },
+
+    { (struct option) { "warning",      no_argument,       NULL, 'W' },
+     		"prints a warning to the standard error when encountering an object matching an exclude pattern.", NULL },
+
+    /* End of list */
+    { (struct option) {(char *) NULL, 0, (int *) NULL, 0}, (char *) NULL, (char *) NULL}
+  }; /* end of main_usage[] */
+
+/* Main */
+   int
 main( int argc, char **argv ) 
 {
     extern char 	*optarg;
     extern int		optind;
-    char		*kfile = _RADMIND_COMMANDFILE;
+    unsigned char      *kfile = (unsigned char *) _RADMIND_COMMANDFILE;
     int 		c, len, edit_path_change = 0;
     int 		errflag = 0, use_outfile = 0;
     int			finish = 0;
+    int                 optndx = 0;
+    int			tmp_i;
     struct stat		st;
+    struct option      *main_opts;
+    char               *main_optstr;
     char		type, buf[ MAXPATHLEN ];
     struct applefileinfo	afinfo;
+
+    /* Get our name from argv[0] */
+    for (main_optstr = argv[0]; *main_optstr; main_optstr++) {
+        if (*main_optstr == '/')
+	    progname = main_optstr+1;
+    }
 
     edit_path = CREATABLE;
     cksum = 0;
     outtran = stdout;
 
-    while (( c = getopt( argc, argv, "%1ACc:IK:o:VvW" )) != EOF ) {
-	switch( c ) {
+    main_opts = usageopt_option_new (main_usage, &main_optstr);
+
+    while (( c = getopt_long (argc, argv, main_optstr, main_opts, &optndx)) != -1) {
+        switch( c ) {
+	case 'B':
+	    tmp_i = atoi (optarg);
+
+	    if ((errno == 0) && (tmp_i >= 0)) {
+	        transcript_buffer_size = tmp_i;
+	    }
+	    break;
+
 	case '%':
 	case 'v':
 	    finish = 100;
@@ -283,6 +364,10 @@ main( int argc, char **argv )
             cksum = 1;
             break;
 
+	case 'd':
+	    debug++;
+	    break;
+
 	case 'I':
 	    case_sensitive = 0;
 	    break;
@@ -296,7 +381,7 @@ main( int argc, char **argv )
 	    break;
 
 	case 'K':
-	    kfile = optarg;
+	  kfile = (unsigned char *) optarg;
 	    break;
 
 	case '1':
@@ -320,8 +405,14 @@ main( int argc, char **argv )
 	    exclude_warnings = 1;
 	    break;
 
+
+	case 'H':  /* --help */
+	  usageopt_usage (stdout, 1 /* verbose */, progname,  main_usage, "<path>", 80);
+	  exit (0);
+
+
 	case '?':
-	    printf( "bad %c\n", c );
+	    printf( "bad option '%c'\n", c );
 	    errflag++;
 	    break;
 
@@ -331,25 +422,28 @@ main( int argc, char **argv )
     }
 
     if (( finish != 0 ) && ( !use_outfile )) {
+        fprintf (stderr, "%s: -v (or -%%) requires -o\n", progname);
 	errflag++;
     }
     if (( edit_path == APPLICABLE ) && ( skip )) {
+        fprintf (stderr, "%s: -1 and -A mutually exclusive.\n", progname);
 	errflag++;
     }
     if ( edit_path_change > 1 ) {
+        fprintf (stderr, "%s: -C, -A, and -1 are mutually exclusive.\n", progname);
 	errflag++;
     }
 
     /* Check that kfile isn't an abvious directory */
-    len = strlen( kfile );
+    len = strlen( (const char *) kfile );
     if ( kfile[ len - 1 ] == '/' ) {
         errflag++;
     }
 
     if ( errflag || ( argc - optind != 1 )) {
-	fprintf( stderr, "usage: %s { -C | -A | -1 } [ -IVW ] ", argv[ 0 ] );
-	fprintf( stderr, "[ -K command ] " );
-	fprintf( stderr, "[ -c checksum ] [ -o file [ -%% ] ] path\n" );
+        usageopt_usage (stderr, 0 /* not verbose */, progname,  main_usage, "<path>", 80);
+	fprintf (stderr, "%s: Use --help to get more verbose usage\n", progname);
+
 	exit ( 2 );
     }
 
@@ -378,7 +472,7 @@ main( int argc, char **argv )
     default:
         if ( snprintf( buf, sizeof( buf ), "./%s",
                 path_prefix ) >= MAXPATHLEN ) {
-            fprintf( stderr, "path too long\n" );
+  	    fprintf( stderr, "%s: path '%s' too long ( > %d)\n", progname, path_prefix, MAXPATHLEN - 3 );
             exit( 2 );
         }
 	path_prefix = buf;
@@ -401,8 +495,8 @@ main( int argc, char **argv )
 	tran_format = T_ABSOLUTE;
     }
 
-    if ( radstat( path_prefix, &st, &type, &afinfo ) != 0 ) {
-	perror( path_prefix );
+    if ( radstat( (const unsigned char *) path_prefix, &st, &type, &afinfo ) != 0 ) {
+        perror( path_prefix );
 	exit( 2 );
     }
 
@@ -414,7 +508,7 @@ main( int argc, char **argv )
     /* initialize the transcripts */
     transcript_init( kfile, K_CLIENT );
 
-    fs_walk( path_prefix, &st, &type, &afinfo, 0, finish, 0 );
+    fs_walk( (const unsigned char *) path_prefix, &st, &type, &afinfo, 0, finish, 0 );
 
     if ( finish > 0 ) {
 	printf( "%%%d\n", ( int )finish );
@@ -426,6 +520,12 @@ main( int argc, char **argv )
 
     /* close the output file */     
     fclose( outtran );
+
+    if ((debug > 0) && (transcript_buffer_size > 0)) {
+        printf ("%u transcripts buffered, %u transcripts not buffered\n", 
+		transcripts_buffered, transcripts_unbuffered);
+    }
+
 
     exit( 0 );	
 }

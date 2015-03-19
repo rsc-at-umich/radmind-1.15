@@ -17,10 +17,10 @@
  * Escape certain characters.  This code must match decode() *and*
  * argcargv().
  */
-    char *
-encode( char *line )
+    const char *
+encode( const char *line )
 {
-    /* static */
+    /* static - not thread safe */
     static char	    buf[ 2 * MAXPATHLEN ];
     char	    *temp;    
 
@@ -66,8 +66,8 @@ encode( char *line )
     return( buf );
 }
 
-    char *
-decode( char *line ) 
+    const char *
+decode( const char *line ) 
 {
     /* static */
     static char     buf[ MAXPATHLEN ];

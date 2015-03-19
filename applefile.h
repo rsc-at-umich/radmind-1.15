@@ -20,9 +20,12 @@
  *      -data fork
  */
 
-#include <sys/types.h>
-#include <sys/param.h>
-#include <inttypes.h>
+#if !defined(_RADMIND_APPLEFILE_H)
+#  define _RADMIND_APPLEFILE_H "$Id$"
+
+#  include <sys/types.h>
+#  include <sys/param.h>
+#  include <inttypes.h>
 
 #define AS_HEADERLEN	26
 
@@ -87,6 +90,8 @@ struct applefileinfo {
     off_t		as_size;	// Total apple single file size 
 };
 
-void as_entry_netswap( struct as_entry *e );
-void as_entry_hostswap( struct as_entry *e );
-off_t ckapplefile( char *applefile, int afd );
+extern void as_entry_netswap( struct as_entry *e );
+extern void as_entry_hostswap( struct as_entry *e );
+extern off_t ckapplefile( char *applefile, int afd );
+
+#endif /* defined(_RADMIND_APPLEFILE_INFO) */

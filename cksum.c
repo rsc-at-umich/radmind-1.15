@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2013 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -61,12 +61,12 @@ do_fcksum( int fd, char *cksum_b64 )
 }
 
     off_t
-do_cksum( char *path, char *cksum_b64 )
+do_cksum( const filepath_t *path, char *cksum_b64 )
 {
     int			fd;
     off_t		size = 0;
 
-    if (( fd = open( path, O_RDONLY, 0 )) < 0 ) {
+    if (( fd = open( (const char *) path, O_RDONLY, 0 )) < 0 ) {
 	return( -1 );
     }
 
@@ -94,10 +94,11 @@ do_cksum( char *path, char *cksum_b64 )
  */
 
     off_t 
-do_acksum( char *path, char *cksum_b64, struct applefileinfo *afinfo )
+do_acksum( const filepath_t *path, char *cksum_b64, struct applefileinfo *afinfo )
 {
     int		    	    	dfd, rfd, rc;
-    char			buf[ 8192 ], rsrc_path[ MAXPATHLEN ];
+    char			buf[ 8192 ];
+    filepath_t               rsrc_path[ MAXPATHLEN ];
     off_t			size = 0;
     extern struct as_header	as_header;
     struct as_entry		as_entries_endian[ 3 ];
@@ -130,13 +131,13 @@ do_acksum( char *path, char *cksum_b64, struct applefileinfo *afinfo )
 
     /* checksum rsrc fork data */
     if ( afinfo->as_ents[ AS_RFE ].ae_length > 0 ) {
-        if ( snprintf( rsrc_path, MAXPATHLEN, "%s%s",
-		path, _PATH_RSRCFORKSPEC ) >= MAXPATHLEN ) {
+      if ( snprintf( (char *) rsrc_path, MAXPATHLEN, "%s%s",
+		     (const char *) path, _PATH_RSRCFORKSPEC ) >= MAXPATHLEN ) {
             errno = ENAMETOOLONG;
             return( -1 );
         }
 
-	if (( rfd = open( rsrc_path, O_RDONLY )) < 0 ) {
+        if (( rfd = open( (const char *) rsrc_path, O_RDONLY )) < 0 ) {
 	    return( -1 );
 	}
 	while (( rc = read( rfd, buf, sizeof( buf ))) > 0 ) {
@@ -151,7 +152,7 @@ do_acksum( char *path, char *cksum_b64, struct applefileinfo *afinfo )
 	}
     }
 
-    if (( dfd = open( path, O_RDONLY, 0 )) < 0 ) {
+    if (( dfd = open( (const char *) path, O_RDONLY, 0 )) < 0 ) {
 	return( -1 );
     }
     /* checksum data fork */
@@ -181,7 +182,7 @@ do_acksum( char *path, char *cksum_b64, struct applefileinfo *afinfo )
  */
 
     off_t 
-do_acksum( char *path, char *cksum_b64, struct applefileinfo *afino )
+do_acksum( const filepath_t *path, char *cksum_b64, struct applefileinfo *afino )
 {
     errno = EOPNOTSUPP;
     return( -1 );

@@ -54,13 +54,14 @@ MAN8TARGETS=	radmind.8
 MANTARGETS=	${MAN1TARGETS} ${MAN5TARGETS} ${MAN8TARGETS}
 TARGETS=        radmind ${BINTARGETS}
 
-RADMIND_OBJ=    version.o daemon.o command.o argcargv.o code.o \
+RADMIND_OBJ=    version.o daemon.o command.o argcargv.o code.o	\
                 cksum.o base64.o mkdirs.o applefile.o connect.o \
-		list.o wildcard.o logname.o pathcmp.o tls.o
+		list.o wildcard.o logname.o pathcmp.o tls.o 	\
+		usageopt.o
 
 FSDIFF_OBJ=     version.o fsdiff.o argcargv.o transcript.o llist.o code.o \
                 hardlink.o cksum.o base64.o pathcmp.o radstat.o applefile.o \
-		list.o wildcard.o
+		list.o wildcard.o usageopt.o
 
 KTCHECK_OBJ=    version.o ktcheck.o argcargv.o retr.o base64.o code.o \
                 cksum.o list.o llist.o connect.o applefile.o tls.o pathcmp.o \
@@ -81,7 +82,8 @@ LMERGE_OBJ=     version.o lmerge.o argcargv.o code.o pathcmp.o mkdirs.o \
 
 LFDIFF_OBJ=     version.o lfdiff.o argcargv.o connect.o retr.o cksum.o \
                 progress.o base64.o applefile.o code.o tls.o pathcmp.o \
-		transcript.o list.o radstat.o hardlink.o mkprefix.o wildcard.o
+		transcript.o list.o radstat.o hardlink.o mkprefix.o \
+		wildcard.o usageopt.o
 
 REPO_OBJ=	version.o repo.o report.o argcargv.o connect.o code.o tls.o
 
@@ -91,7 +93,7 @@ T2PKG_OBJ=	version.o t2pkg.o argcargv.o transcript.o connect.o code.o \
 
 TWHICH_OBJ=     version.o twhich.o argcargv.o transcript.o llist.o code.o \
                 hardlink.o cksum.o base64.o pathcmp.o radstat.o applefile.o \
-		list.o wildcard.o
+		list.o wildcard.o usageopt.o
 
 LSORT_OBJ=     version.o lsort.o pathcmp.o code.o argcargv.o
 
@@ -200,6 +202,11 @@ tls.o : tls.c
 		-D_RADMIND_TLS_CA=\"${TLS_CA}\" \
 		-D_RADMIND_TLS_CERT=\"${TLS_CERT}\" \
 		-c ${srcdir}/tls.c
+
+usageopt.o : usageopt.c
+	${CC} ${CFLAGS}	\
+		-c ${srcdir}/usageopt.c
+
 
 radmind : libsnet/libsnet.la ${RADMIND_OBJ} Makefile
 	${CC} ${CFLAGS} -o radmind ${RADMIND_OBJ} ${LDFLAGS}
@@ -380,5 +387,5 @@ clean :
 distclean: clean
 	rm -f config.log config.status Makefile config.h
 	rm -rf autom4te.cache
-	rm -rf .#*
+	rm -rf .#* *~
 	cd libsnet; make distclean

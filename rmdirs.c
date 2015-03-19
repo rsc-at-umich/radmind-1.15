@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2013 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -17,15 +17,15 @@
 #include "rmdirs.h"
 
     int
-rmdirs( char *path )
+rmdirs( const filepath_t *path )
 {
     int			i, len, unlinkedfiles;
-    char		temp[ MAXPATHLEN ];
+    filepath_t		temp[ MAXPATHLEN ];
     DIR			*dir;
     struct dirent	*dirent;
     struct stat		st;
 
-    if (( dir = opendir( path )) == NULL ) {
+    if (( dir = opendir( (const char *)path )) == NULL ) {
 	return( -1 );
     }
 
@@ -51,7 +51,7 @@ rmdirs( char *path )
 		continue;
 	    } 
 
-	    len = strlen( path );
+	    len = strlen( (char *) path );
 
 	    /* absolute pathname. add 2 for / and NULL termination.  */
 	    if (( len + strlen( dirent->d_name ) + 2 ) > MAXPATHLEN ) {
@@ -60,14 +60,14 @@ rmdirs( char *path )
 	    }
 	
 	    if ( path[ len - 1 ] == '/' ) {
-		if ( snprintf( temp, MAXPATHLEN, "%s%s", path, dirent->d_name )
+	      if ( snprintf( (char *) temp, MAXPATHLEN, "%s%s", (char *) path, dirent->d_name )
 			>= MAXPATHLEN ) {
 		    fprintf( stderr, "%s%s: path too long\n", path,
 			dirent->d_name );
 		    goto error;
 		}           
 	    } else {
-		if ( snprintf( temp, MAXPATHLEN, "%s/%s", path, dirent->d_name )
+	      if ( snprintf( (char *) temp, MAXPATHLEN, "%s/%s", (char *) path, dirent->d_name )
 			>= MAXPATHLEN ) {
 		    fprintf( stderr, "%s/%s: path too long\n", path,
 			dirent->d_name );
@@ -75,7 +75,7 @@ rmdirs( char *path )
 		}
 	    }
 
-	    if ( lstat( temp, &st ) != 0 ) {
+	    if ( lstat( (const char *) temp, &st ) != 0 ) {
 		/* XXX - how to return path that gave error? */
 		fprintf( stderr, "%s: %s\n", temp, strerror( errno ));
 		goto error;
@@ -86,7 +86,7 @@ rmdirs( char *path )
 		    goto error;
 		}
 	    } else {
-		if ( unlink( temp ) != 0 ) {
+	      if ( unlink( (char *) temp ) != 0 ) {
 		    fprintf( stderr, "%s: %s\n", temp, strerror( errno ));
 		    goto error;
 		}
@@ -101,7 +101,7 @@ rmdirs( char *path )
     if ( closedir( dir ) != 0 ) {
 	return( -1 );
     }
-    if ( rmdir( path ) != 0 ) {
+    if ( rmdir( (const char *) path ) != 0 ) {
 	return( -1 );
     }
 

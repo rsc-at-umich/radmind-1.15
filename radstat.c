@@ -28,7 +28,7 @@
  */
 
     int
-radstat( char *path, struct stat *st, char *type, struct applefileinfo *afinfo )
+radstat( const filepath_t *path, struct stat *st, char *type, struct applefileinfo *afinfo )
 {
 #ifdef __APPLE__
     static char			null_buf[ FINFOLEN ] = { 0 };
@@ -36,7 +36,7 @@ radstat( char *path, struct stat *st, char *type, struct applefileinfo *afinfo )
     extern struct attrlist 	getdiralist;
 #endif /* __APPLE__ */
 
-    if ( lstat( path, st ) != 0 ) {
+    if ( lstat( (const char *) path, st ) != 0 ) {
 	if (( errno == ENOTDIR ) || ( errno == ENOENT )) {
 	    memset( st, 0, sizeof( struct stat ));
 	    *type = 'X';
@@ -49,7 +49,7 @@ radstat( char *path, struct stat *st, char *type, struct applefileinfo *afinfo )
 #ifdef __APPLE__
 	/* Check to see if it's an HFS+ file */
 	if ( afinfo != NULL ) {
-	    if (( getattrlist( path, &getalist, &afinfo->ai,
+	  if (( getattrlist( (const char *) path, &getalist, &afinfo->ai,
 		    sizeof( struct attr_info ), FSOPT_NOFOLLOW ) == 0 )) {
 		if (( afinfo->ai.ai_rsrc_len > 0 ) ||
 	( memcmp( afinfo->ai.ai_data, null_buf, FINFOLEN ) != 0 )) {
@@ -66,7 +66,7 @@ radstat( char *path, struct stat *st, char *type, struct applefileinfo *afinfo )
 #ifdef __APPLE__
 	/* Get any finder info */
 	if ( afinfo != NULL ) {
-	    getattrlist( path, &getdiralist, &afinfo->ai,
+	  getattrlist( (const char *) path, &getdiralist, &afinfo->ai,
 		sizeof( struct attr_info ), FSOPT_NOFOLLOW );
 	}
 #endif /* __APPLE__ */

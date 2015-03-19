@@ -18,11 +18,11 @@ FILE	*outtran;
 
 struct save_line {
     struct save_line 	*next;
-    char 		*key;
-    char 		*data;
+    filepath_t 		*key;
+    char  		*data;
 } *lines;
 
-void 			save_it( char *buffer, char *pathname );
+void 			save_it( const char *buffer, const filepath_t *pathname );
 static int 		lsort_cmp( const void *a1, const void *b1 );
 void 			sort_them( void );
 void 			print_them( void );
@@ -31,14 +31,16 @@ void 			process( char * arg );
 int			case_sensitive = 1;
 
     void
-save_it( char *buffer, char *pathname )
+save_it( const char *buffer, const filepath_t *pathname )
 {
     struct save_line 	*sp;
 
-    sp = malloc( sizeof( *sp ) + strlen( buffer ) + strlen( pathname ) + 4 );
-    sp->key = (char*)( sp + 1 );
-    strcpy( sp->key, pathname );
-    sp->data = ( sp->key + strlen( sp->key ) + 1 );
+    sp = malloc( sizeof( *sp ) + strlen( buffer ) + filepath_len( pathname ) + 4 /* why not 2? */);
+
+    sp->key = (filepath_t*)( ( &sp[1]));	/* Set pointer to past ent of 'struct save_line' */
+    filepath_cpy( sp->key, pathname );
+
+    sp->data = (char *) (sp->key + filepath_len( sp->key ) + 1 ); /* past the end of the string */
     strcpy( sp->data, buffer );
     sp->next = lines;
     lines = sp;
@@ -148,7 +150,7 @@ process( char *arg )
 	    fprintf( stderr, "%s: line %d: not enough fields\n", fn, lineno );
 	    exit( 1 );
 	}
-	save_it( line, decode( argv[ 1 ] ));
+	save_it( line, (filepath_t *) decode( argv[ 1 ] ));
     }
 
     if ( f == stdin ) {

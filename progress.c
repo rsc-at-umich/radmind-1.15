@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2003, 2013 Regents of The University of Michigan.
+ * All Rights Reserved.  See COPYRIGHT.
+ */
+
+
 #include "config.h"
 
 #include <sys/types.h>
@@ -103,10 +109,10 @@ applyloadsetsize( FILE *tran )
 }
 
     off_t
-lcksum_loadsetsize( FILE *tran, char *prefix )
+lcksum_loadsetsize( FILE *tran, const char *prefix )
 {
     char	tline[ LINE_MAX ], line[ LINE_MAX ];
-    char	*d_path = NULL;
+    const char	*d_path = NULL;
     char	**targv;
     int		tac, linenum = 0;
     off_t	size = 0;
@@ -145,7 +151,7 @@ lcksum_loadsetsize( FILE *tran, char *prefix )
 }
 
     void
-progressupdate( ssize_t bytes, char *path )
+progressupdate( ssize_t bytes, const filepath_t *path )
 {
     int		last = progress;
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2007 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2007, 2013 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -44,8 +44,7 @@
 #include "command.h"
 #include "logname.h"
 #include "tls.h"
-
-void            (*logger)( char * ) = NULL;
+#include "usageopt.h"
 
 int		debug = 0;
 int		backlog = 5;
@@ -61,6 +60,7 @@ int		rap_extensions = 1;			/* 1 for REPO */
 int             reinit_ssl_signal = 0;
 char		*radmind_path = _RADMIND_PATH;
 SSL_CTX         *ctx = NULL;
+char		*progname = "radmind";
 
 #ifdef HAVE_ZLIB
 extern int 	max_zlib_level;
@@ -71,7 +71,7 @@ extern char	*version;
 void		hup( int );
 void		usr1( int );
 void		chld( int );
-int		main( int, char *av[] );
+int		main( int argc, char *argv[] );
 
     void
 hup( int sig )
@@ -134,8 +134,114 @@ register_service( DNSServiceRef *dnssrv, unsigned int port,
 }
 #endif /* HAVE_DNSSD */
 
+
+/*
+ * Command-line options
+ *
+ * Formerly getopt - "a:Bb:C:dD:F:fL:m:p:P:Rru:UVw:x:y:z:Z:"
+ */
+
+static const usageopt_t main_usage[] = 
+  {
+    { (struct option) { "listen-address",   required_argument,    NULL, 'a' }, 
+     		"IPv4 addresss to bind()/listen for requests on", "IPv4-address" }, 
+
+    { (struct option) { "bonjour", no_argument,  NULL, 'B' },
+	      "Register as a Bonjour service", NULL},
+
+    { (struct option) { (char *) NULL, no_argument, NULL, 'R' },
+	      "Deprecated in favor of -B/--bonjour", NULL },
+
+    { (struct option) { "listen-backlog", required_argument, NULL, 'b' },
+	      "# of extra connections allowed (default 5)", "non-negative-integer" },
+
+    { (struct option) { "debug", no_argument, NULL, 'd'},
+      		"Raise debugging level to see what's happening", NULL},
+
+    { (struct option) { "cert-revocation-list", required_argument, NULL, 'C' },
+	      "CRL directory or path", "file-or-path" },
+
+
+    { (struct option) { "radmind-path", required_argument, NULL, 'D' },
+      	      "Path for config, command, transcript, and special. Defaults to '"
+		      _RADMIND_PATH "'", "directory-path"},
+
+    { (struct option) { "syslog-facility", required_argument, NULL, 'F' },
+	      "syslog(3) facility (see also syslog.conf(8) )", "syslog-facility" },
+
+
+    { (struct option) { "syslog-level", required_argument, NULL, 'L' },
+ 	     "syslog(3) level (see also syslog.conf(8) )", "syslog-level" },
+
+      
+    { (struct option) { "foreground", no_argument, NULL, 'f' },
+	      "Run in foreground", NULL },
+
+
+    { (struct option) { "max-connections", required_argument, NULL, 'm' },
+	      "Maximum number of simultaneous connections (0 == no limit)", "non-negative-integer" }, 
+
+    { (struct option) { "listen-port", required_argument, NULL, 'p' },
+      		"TCP port to listen on", "non-negative-integer" },
+
+    { (struct option) { "ca-directory",  required_argument, NULL, 'P' },
+	      "Specify where 'ca.pem' can be found.", "pathname"},
+
+
+    { (struct option) { "use-randfile", no_argument, NULL, 'r' },
+      "use random seed file $RANDFILE if that environment variable is set, $HOME/.rnd otherwise.  See RAND_load_file(3)", NULL },
+
+
+    { (struct option) { "umask", required_argument, NULL, 'u' },
+      "umask used when uploading transcripts with 'lcreate'", "number" },
+
+    { (struct option) { "check-user", no_argument, NULL, 'U' },
+      "Turn on PAM user authentication.  Requires auth-level > 0.  radmind uses the PAM service name radmind.", NULL},
+
+    { (struct option) { "authentication",  required_argument, NULL, 'w' },
+	      "Specify the authentication level", "number" },
+
+    { (struct option) { "ca-file",       required_argument, NULL, 'x' },
+	      "Specify the certificate authority file", "pem-file" },
+
+    { (struct option) { "cert",          required_argument, NULL, 'y' },
+	      "Certificate for authenticating client to radmind server", "pem-file"},
+
+    { (struct option) { "cert-key",      required_argument, NULL, 'z' },
+	      "Key file for --cert certificate", "key-file" },
+
+#if defined(HAVE_ZLIB)
+    { (struct option) { "zlib-level",   required_argument,   NULL, 'Z'},
+	      "Specify zlib compression level", "number"},
+#else
+    { (struct option) { "zlib-level",   required_argument,   NULL, 'Z'},
+	      "Not available", "(number)"},
+#endif /* defined(HAVE_ZLIB) */
+
+
+    { (struct option) { "verbose",      no_argument,	   NULL, 'v' },
+	      "Increase verbosity (only)", NULL },
+
+    { (struct option) { "version",      no_argument,       NULL, 'V' },
+     		"show version number and exits", NULL },
+    
+    { (struct option) { "help",         no_argument,       NULL, 'H' },
+     		"This message", NULL },
+    
+    /* End of list */
+    { (struct option) {(char *) NULL, 0, (int *) NULL, 0}, (char *) NULL, (char *) NULL}
+  }; /* end of main_usage[] */
+
+extern int		optind;
+extern int		opterr;
+extern int		optopt;
+extern char		*optarg;
+
+
+/* Main */
+
     int
-main( int ac, char **av )
+main( int argc, char **argv )
 {
     struct sigaction	sa, osahup, osausr1, osachld;
     struct sockaddr_in	sin;
@@ -145,12 +251,9 @@ main( int ac, char **av )
     socklen_t		addrlen;
     int			dontrun = 0, fg = 0;
     int			use_randfile = 0;
-    char		*prog;
     unsigned short	port = 0;
     int			facility = _RADMIND_LOG;
     int			level = LOG_INFO;
-    extern int		optind;
-    extern char		*optarg;
     extern char		*caFile, *caDir, *crlFile, *crlDir, *cert, *privatekey;
     struct stat		st;
     pid_t		pid;
@@ -161,12 +264,19 @@ main( int ac, char **av )
     DNSServiceRef	dnssrv;
     DNSServiceErrorType	dnsreg_err;
 #endif /* HAVE_DNSSD */
+    int                 optndx = 0;
+    struct option      *main_opts;
+    char               *main_optstr;
 
-    if (( prog = strrchr( av[ 0 ], '/' )) == NULL ) {
-	prog = av[ 0 ];
-    } else {
-	prog++;
+    /* Get our name from argv[0] */
+    for (main_optstr = argv[0]; *main_optstr; main_optstr++) {
+        if (*main_optstr == '/')
+	    progname = main_optstr+1;
     }
+
+    /* usageopt_debug = 7; */
+
+    main_opts = usageopt_option_new (main_usage, &main_optstr);
 
     b_addr.s_addr = htonl( INADDR_ANY );
 
@@ -175,8 +285,12 @@ main( int ac, char **av )
     cert = "cert/cert.pem"; 	 
     privatekey = "cert/cert.pem";
 
-#define RADMIND_DAEMON_OPTS	"a:Bb:C:dD:F:fL:m:p:P:Rru:UVw:x:y:z:Z:"
-    while (( c = getopt( ac, av, RADMIND_DAEMON_OPTS )) != EOF ) {
+    while (( c = getopt_long (argc, argv, main_optstr, main_opts, &optndx)) != -1) {
+      if ((debug > 1) || (verbose > 1) ) {
+	  fprintf (stderr, "%s-debug/verbose: main_optstr=\"%s\"\n", progname, main_optstr);
+	  fprintf(stderr, "%s-debug/verbose: c='%c' (#%d), optndx=%d\n", progname, c, c, optndx);
+	}
+
 	switch ( c ) {
 	case 'a' :		/* bind address */ 
 	    if ( !inet_aton( optarg, &b_addr )) {
@@ -204,6 +318,10 @@ main( int ac, char **av )
 	    verbose++;
 	    break;
 
+	case 'v':		/* Increment verbosity only */
+	    verbose++;
+	    break;
+
 	case 'C' :		/* crl file or dir */
 	    if ( stat( optarg, &st ) < 0 ) {
 	        fprintf( stderr, "stat CRL path %s: %s\n",
@@ -224,7 +342,7 @@ main( int ac, char **av )
 	case 'F':
 	    if (( facility = syslogfacility( optarg )) == -1 ) {
 		fprintf( stderr, "%s: %s: unknown syslog facility\n",
-			prog, optarg );
+			progname, optarg );
 		exit( 1 );
 	    }
 	    break;
@@ -281,7 +399,7 @@ main( int ac, char **av )
 	    authlevel = atoi( optarg );
 	    if (( authlevel < 0 ) || ( authlevel > 4 )) {
 		fprintf( stderr, "%s: %s: invalid authorization level\n",
-			prog, optarg );
+			progname, optarg );
 		exit( 1 );
 	    }
 	    break;
@@ -314,20 +432,31 @@ main( int ac, char **av )
 	    exit( 1 );
 #endif /* HAVE_ZLIB */
 
+
+	case 'H':  /* --help */
+	  usageopt_usage (stdout, 1 /* verbose */, progname,  main_usage,
+			  "<file>", 80);
+	  exit (0);
+
+	case '?':
+	    err++;
+	    fprintf (stderr, "%s: Unrecognized option starting at '%c' (#%d)\n",
+		     progname, optopt, optopt);
+	    fprintf (stderr, "\t- optind=%d, opterr=%d\n", optind, opterr);
+	    break;
+
 	default :
+	  fprintf(stderr, "%s: Unimplemented option, '-%c'\n",
+		  progname, c);
 	    err++;
 	}
     }
 
-    if ( err || optind != ac ) {
-	fprintf( stderr, "Usage: radmind [ -dBrUV ] [ -a bind-address ] " );
-	fprintf( stderr, "[ -b backlog ] [ -C crl-pem-file-or-dir ] " );
-	fprintf( stderr, "[ -D path ] [ -F syslog-facility ]" );
-	fprintf( stderr, "[ -L syslog-level ] [ -m max-connections ] " );
-	fprintf( stderr, "[ -p port ] [ -P ca-pem-directory ] [ -u umask ] " );
-	fprintf( stderr, "[ -w auth-level ] [ -x ca-pem-file ] " );
-	fprintf( stderr, "[ -y cert-pem-file] [ -z key-pem-file ] " );
-	fprintf( stderr, "[ -Z max-compression-level ]\n" );
+    if ( err || optind != argc ) {
+        fprintf (stderr, "%s: err=%d, optind=%d, argc=%d\n",
+		 progname, err, optind, argc);
+        usageopt_usage (stderr, 0 /* not verbose */, progname,  main_usage,
+			"", 80);
 	exit( 1 );
     }
 
@@ -475,9 +604,9 @@ main( int ac, char **av )
      * Start logging.
      */
 #ifdef ultrix
-    openlog( prog, LOG_NOWAIT|LOG_PID );
+    openlog( progname, LOG_NOWAIT|LOG_PID );
 #else /* ultrix */
-    openlog( prog, LOG_NOWAIT|LOG_PID, facility );
+    openlog( progname, LOG_NOWAIT|LOG_PID, facility );
 #endif /* ultrix */
     setlogmask( LOG_UPTO( level ));
 

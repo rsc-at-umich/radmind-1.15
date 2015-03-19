@@ -43,7 +43,6 @@
 #include "progress.h"
 #include "report.h"
 
-void		(*logger)( char * ) = NULL;
 int		linenum = 0;
 int		cksum = 0;
 int		quiet = 0;
@@ -55,93 +54,96 @@ int		change = 0;
 int		case_sensitive = 1;
 int		report = 1;
 int		create_prefix = 0;
-char		prepath[ MAXPATHLEN ]  = { 0 };
+static filepath_t prepath[ MAXPATHLEN ]  = { 0 };
 
 extern char	*version, *checksumlist;
 extern off_t	lsize;
-extern int	showprogress;
 const EVP_MD    *md;
 SSL_CTX  	*ctx;
 
 extern char             *caFile, *caDir, *cert, *privatekey;
 
-struct node {
-    char                *path;
+typedef struct apply_node apply_node_t;
+
+struct apply_node {
+    filepath_t         *path;
     int			doline;
     char		*tline;
-    char		*tran;
-    struct node         *next;
+    filepath_t		*tran;
+    apply_node_t        *next;
 };
 
-struct node 	*node_create( char *path, char *tline, char *tran );
-void 		node_free( struct node *node );
-int 		do_line( char *tline, char *tran, int present,
+static apply_node_t 	*apply_node_create( const filepath_t *path, const char *tline,
+					    const filepath_t *tran );
+static void 		apply_node_free( apply_node_t *ap_node );
+static int 		do_line( char *tline, const filepath_t *tran, int present,
 				struct stat *st, SNET *sn );
 
-   struct node *
-node_create( char *path, char *tline, char *tran )
+   static apply_node_t *
+apply_node_create( const filepath_t *path, const char *tline, const filepath_t *tran )
 {
-    struct node         *new_node;
+    apply_node_t         *new_ap_node;
 
-    if (( new_node = (struct node *) malloc( sizeof( struct node ))) == NULL) {
+    if (( new_ap_node = (apply_node_t *) malloc( sizeof( apply_node_t ))) == NULL) {
 	perror( "create_node: malloc" );
 	exit( 2 );
     }
-    if (( new_node->path = strdup( path )) == NULL ) {
+    if (( new_ap_node->path = filepath_dup( path )) == NULL ) {
 	fprintf( stderr, "create_node: strdup %s: %s\n",
 		path, strerror( errno ));
 	exit( 2 );
     }
     if ( tran != NULL ) {
-	if (( new_node->tran = strdup( tran )) == NULL ) {
-	    fprintf( stderr, "node_create: strdup %s: %s\n",
+	if (( new_ap_node->tran = filepath_dup( tran )) == NULL ) {
+	    fprintf( stderr, "apply_node_create: strdup %s: %s\n",
 		    path, strerror( errno ));
 	    exit( 2 );
 	}
     } else {
-	new_node->tran = NULL;
+	new_ap_node->tran = NULL;
     }
     if ( tline != NULL ) {
-	if (( new_node->tline = strdup( tline )) == NULL ) {
+	if (( new_ap_node->tline = strdup( tline )) == NULL ) {
 	    fprintf( stderr, "create_node: strdup: %s: %s\n",
 			tline, strerror( errno ));
 	    exit( 2 );
 	}
-	new_node->doline = 1;
+	new_ap_node->doline = 1;
     } else {
-	new_node->tline = NULL;
-	new_node->doline = 0;
+	new_ap_node->tline = NULL;
+	new_ap_node->doline = 0;
     }
-    new_node->next = NULL;
+    new_ap_node->next = NULL;
 
-    return( new_node );
+    return( new_ap_node );
 }
 
     void 
-node_free( struct node *node )
+apply_node_free( apply_node_t *ap_node )
 {
-    if ( node->tline != NULL ) {
-	free( node->tline );
+    if ( ap_node->tline != NULL ) {
+	free( ap_node->tline );
     }
-    if ( node->tran != NULL ) {
-	free( node->tran );
+    if ( ap_node->tran != NULL ) {
+	free( ap_node->tran );
     }
-    free( node->path );
-    free( node );
+    free( ap_node->path );
+    free( ap_node );
 }
 
-    int
-do_line( char *tline, char *tran, int present, struct stat *st, SNET *sn )
+    static int
+do_line( char *tline, const filepath_t *tran, int present, struct stat *st, SNET *sn )
 {
     char                	fstype;
-    char        	        *command = "", *d_path;
+    char        	        *command = "";
+    const char                  *d_path;
     ACAV               		*acav;
     int				tac;
     char 	               	**targv;
     struct applefileinfo        afinfo;
-    char     	       		path[ 2 * MAXPATHLEN ];
-    char			temppath[ 2 * MAXPATHLEN ];
-    char			pathdesc[ 2 * MAXPATHLEN ];
+    filepath_t 	       		path[ 2 * MAXPATHLEN ];
+    filepath_t			temppath[ 2 * MAXPATHLEN ];
+    filepath_t			pathdesc[ 2 * MAXPATHLEN ];
     char			cksum_b64[ SZ_BASE64_E( EVP_MAX_MD_SIZE ) ];
 
     acav = acav_alloc( );
@@ -157,7 +159,7 @@ do_line( char *tline, char *tran, int present, struct stat *st, SNET *sn )
 	fprintf( stderr, "line %d: too long\n", linenum );
 	return( 1 );
     } 
-    strcpy( path, d_path );
+    filepath_cpy( path, (filepath_t *) d_path );
 
     /* DOWNLOAD */
     if ( *command == '+' ) {
@@ -169,13 +171,13 @@ do_line( char *tline, char *tran, int present, struct stat *st, SNET *sn )
 	strcpy( cksum_b64, targv[ 7 ] );
 
 	if ( special ) {
-	    if ( snprintf( pathdesc, MAXPATHLEN * 2, "SPECIAL %s",
+	  if ( snprintf( (char *) pathdesc, MAXPATHLEN * 2, "SPECIAL %s",
 		    targv[ 1 ]) >= ( MAXPATHLEN * 2 )) {
 		fprintf( stderr, "SPECIAL %s: too long\n", targv[ 1 ]);
 		return( 1 );
 	    }
 	} else {
-	    if ( snprintf( pathdesc, MAXPATHLEN * 2, "FILE %s %s",
+	  if ( snprintf( (char *) pathdesc, MAXPATHLEN * 2, "FILE %s %s",
 		    tran, targv[ 1 ]) >= ( MAXPATHLEN * 2 )) {
 		fprintf( stderr, "FILE %s %s: command too long\n",
 		    tran, targv[ 1 ]);
@@ -208,15 +210,15 @@ do_line( char *tline, char *tran, int present, struct stat *st, SNET *sn )
 	    }
 	}
 	if ( radstat( temppath, st, &fstype, &afinfo ) < 0 ) {
-	    perror( temppath );
+	  perror( (char *) temppath );
 	    return( 1 );
 	}
 	/* Update temp file*/
 	switch( update( temppath, path, present, 1, st, tac, targv, &afinfo )) {
 	case 0:
 	    /* rename doesn't mangle forked files */
-	    if ( rename( temppath, path ) != 0 ) {
-		perror( temppath );
+	  if ( rename( (char *) temppath, (char *) path ) != 0 ) {
+		perror( (char *) temppath );
 		return( 1 );
 	    }
 	    break;
@@ -232,7 +234,7 @@ do_line( char *tline, char *tran, int present, struct stat *st, SNET *sn )
 	/* UPDATE */
 	if ( present ) {
 	    if ( radstat( path, st, &fstype, &afinfo ) < 0 ) {
-		perror( path );
+	        perror( (char *) path );
 		return( 1 );
 	    }
 	}
@@ -262,18 +264,21 @@ main( int argc, char **argv )
     unsigned short	port = 0;
     extern int          optind;
     FILE		*f = NULL; 
-    char		*host = _RADMIND_HOST, *d_path;
+    char		*host = _RADMIND_HOST;
+    const char 		*d_path;
     char		tline[ 2 * MAXPATHLEN ];
     char		targvline[ 2 * MAXPATHLEN ];
-    char		path[ 2 * MAXPATHLEN ];
-    char		transcript[ 2 * MAXPATHLEN ] = { 0 };
+    filepath_t		path[ 2 * MAXPATHLEN ];
+    filepath_t		transcript[ 2 * MAXPATHLEN ] = { 0 };
     struct applefileinfo	afinfo;
     int			tac, present, len;
     char		**targv;
     char		*command = "";
     char		fstype;
     struct stat		st;
-    struct node		*head = NULL, *new_node, *node;
+    apply_node_t	*ap_head = NULL,
+      			*new_ap_node,
+      			*ap_node;
     ACAV		*acav;
     SNET		*sn = NULL;
     int			authlevel = _RADMIND_AUTHLEVEL;
@@ -512,15 +517,15 @@ main( int argc, char **argv )
         }
 
 	if ( tac == 1 ) {
-	    strcpy( transcript, targv[ 0 ] );
-	    len = strlen( transcript );
+	    filepath_ncpy( transcript, (filepath_t *) targv[ 0 ], sizeof(transcript)-1 );
+	    len = filepath_len( transcript );
 	    if ( transcript[ len - 1 ] != ':' ) { 
 		fprintf( stderr, "%s: line %d: invalid transcript name\n",
 		    transcript, linenum );
 		goto error2;
 	    }
 	    transcript[ len - 1 ] = '\0';
-	    if ( strcmp( transcript, "special.T" ) == 0 ) {
+	    if ( filepath_cmp( transcript, (filepath_t *) "special.T" ) == 0 ) {
 		special = 1;
 	    } else {
 		special = 0;
@@ -534,7 +539,7 @@ main( int argc, char **argv )
 
 	    /* Check for transcript name on download */
 	    if ( *targv[ 0 ] ==  '+' ) {
-		if ( strcmp( transcript, "" ) == 0 ) {
+	        if ( filepath_cmp( transcript, (filepath_t *) "" ) == 0 ) {
 		    fprintf( stderr, "line %d: no transcript indicated\n",
 			linenum );
 		    goto error2;
@@ -554,7 +559,7 @@ main( int argc, char **argv )
 	    fprintf( stderr, "line %d: too long\n", linenum );
 	    return( 1 );
 	} 
-	strcpy( path, d_path );
+	filepath_ncpy( path, (filepath_t *) d_path, sizeof (path)-1 );
 
 	/* Check transcript order */
 	if ( *prepath != '\0' ) {
@@ -563,12 +568,12 @@ main( int argc, char **argv )
 		goto error2;
 	    }
 	}
-	if ( strlen( path ) >= MAXPATHLEN ) {
+	if ( filepath_len( path ) >= MAXPATHLEN ) {
 	    fprintf( stderr, "%s: line %d: path too long\n",
 		    transcript, linenum );
 	    goto error2;
 	}
-	strcpy( prepath, path );
+	filepath_cpy( prepath, path );
 
 	/* Do type check on local file */
 	switch ( radstat( path, &st, &fstype, &afinfo )) {
@@ -582,7 +587,7 @@ main( int argc, char **argv )
 	    if ( errno == ENOENT ) { 
 		present = 0;
 	    } else {
-		perror( path );
+	        perror( (char *) path );
 		goto error2;
 	    }
 	    break;
@@ -603,55 +608,55 @@ main( int argc, char **argv )
 		|| ( present && fstype != *targv[ 0 ] )) {
 	    if ( fstype == 'd' ) {
 dirchecklist:
-		if ( head == NULL ) {
+		if ( ap_head == NULL ) {
 		    /* Add dir to empty list */
 		    if ( present && fstype != *targv[ 0 ] ) {
-		    	head = node_create( path, tline, transcript );
+		    	ap_head = apply_node_create( path, tline, transcript );
 		    } else {
 			/* just a removal, no context necessary */
-			head = node_create( path, NULL, NULL );
+			ap_head = apply_node_create( path, NULL, NULL );
 		    }
 		    continue;
 		} else {
-		    if ( ischildcase( path, head->path, case_sensitive )) {
+		    if ( ischildcase( path, ap_head->path, case_sensitive )) {
 			/* Add dir to list */
 			if ( present && fstype != *targv[ 0 ] ) {
-			    new_node = node_create( path, tline, transcript );
+			    new_ap_node = apply_node_create( path, tline, transcript );
 			} else {
-			    new_node = node_create( path, NULL, NULL );
+			    new_ap_node = apply_node_create( path, NULL, NULL );
 			}
-			new_node->next = head;
-			head = new_node;
+			new_ap_node->next = ap_head;
+			ap_head = new_ap_node;
 		    } else {
-			/* remove head */
-			if ( rmdir( head->path ) != 0 ) {
-			    perror( head->path );
+			/* remove ap_head */
+		        if ( rmdir( (char *) ap_head->path ) != 0 ) {
+			    perror( (char *) ap_head->path );
 			    goto error2;
 			}
 			if ( !quiet && !showprogress ) {
-			    printf( "%s: deleted\n", head->path );
+			    printf( "%s: deleted\n", ap_head->path );
 			}
 			if ( showprogress ) {
-			    progressupdate( PROGRESSUNIT, head->path );
+			    progressupdate( PROGRESSUNIT, ap_head->path );
 			}
-			node = head;
-			head = node->next;
-			if ( node->doline ) {
-			    if ( do_line( node->tline, node->tran, 0,
+			ap_node = ap_head;
+			ap_head = ap_node->next;
+			if ( ap_node->doline ) {
+			    if ( do_line( ap_node->tline, ap_node->tran, 0,
 					&st, sn ) != 0 ) {
 				goto error2;
 			    }
 			    change = 1;
 			}
-			node_free( node );
+			apply_node_free( ap_node );
 			goto dirchecklist;
 		    }
 		}
 	    } else {
 filechecklist:
-		if ( head == NULL ) {
-		    if ( unlink( path ) != 0 ) {
-			perror( path );
+		if ( ap_head == NULL ) {
+		    if ( unlink( (char *) path ) != 0 ) {
+		        perror( (char *) path );
 			goto error2;
 		    }
 		    if ( !quiet && !showprogress ) {
@@ -661,9 +666,9 @@ filechecklist:
 			progressupdate( PROGRESSUNIT, path );
 		    }
 		} else {
-		    if ( ischildcase( path, head->path, case_sensitive )) {
-			if ( unlink( path ) != 0 ) {
-			    perror( path );
+		    if ( ischildcase( path, ap_head->path, case_sensitive )) {
+		        if ( unlink( (char *) path ) != 0 ) {
+			    perror( (char *) path );
 			    goto error2;
 			}
 			if ( !quiet && !showprogress ) {
@@ -673,27 +678,27 @@ filechecklist:
 			    progressupdate( PROGRESSUNIT, path );
 			}
 		    } else {
-			/* remove head */
-			if ( rmdir( head->path ) != 0 ) {
-			    perror( head->path );
+			/* remove ap_head */
+		        if ( rmdir( (char *) ap_head->path ) != 0 ) {
+			    perror( (char *) ap_head->path );
 			    goto error2;
 			}
 			if ( !quiet && !showprogress ) {
-			    printf( "%s: deleted\n", head->path );
+			    printf( "%s: deleted\n", ap_head->path );
 			}
 			if ( showprogress ) {
-			    progressupdate( PROGRESSUNIT, head->path );
+			    progressupdate( PROGRESSUNIT, ap_head->path );
 			}
-			node = head;
-			head = node->next;
-			if ( node->doline ) {
-			    if ( do_line( node->tline, node->tran, 0,
+			ap_node = ap_head;
+			ap_head = ap_node->next;
+			if ( ap_node->doline ) {
+			    if ( do_line( ap_node->tline, ap_node->tran, 0,
 					&st, sn ) != 0 ) {
 				goto error2;
 			    }
 			    change = 1;
 			}
-			node_free( node );
+			apply_node_free( ap_node );
 			goto filechecklist;
 		    }
 		}
@@ -706,28 +711,28 @@ filechecklist:
 	}
 
 	/* Minimize remove list */
-	while ( head != NULL && !ischildcase( path, head->path,
+	while ( ap_head != NULL && !ischildcase( path, ap_head->path,
 		case_sensitive )) {
-	    /* remove head */
-	    if ( rmdir( head->path ) != 0 ) {
-		perror( head->path );
+	    /* remove ap_head */
+	    if ( rmdir( (char *) ap_head->path ) != 0 ) {
+	        perror( (char *) ap_head->path );
 		goto error2;
 	    }
 	    if ( !quiet && !showprogress ){
-		printf( "%s: deleted\n", head->path );
+		printf( "%s: deleted\n", ap_head->path );
 	    }
 	    if ( showprogress ) {
-		progressupdate( PROGRESSUNIT, head->path );
+		progressupdate( PROGRESSUNIT, ap_head->path );
 	    }
-	    node = head;
-	    head = node->next;
-	    if ( node->doline ) {
-		if ( do_line( node->tline, node->tran, 0, &st, sn ) != 0 ) {
+	    ap_node = ap_head;
+	    ap_head = ap_node->next;
+	    if ( ap_node->doline ) {
+		if ( do_line( ap_node->tline, ap_node->tran, 0, &st, sn ) != 0 ) {
 		    goto error2;
 		}
 		change = 1;
 	    }
-	    node_free( node );
+	    apply_node_free( ap_node );
 	}
 
 	if ( do_line( tline, transcript, present, &st, sn ) != 0 ) {
@@ -737,25 +742,25 @@ filechecklist:
     }
 
     /* Clear out remove list */ 
-    while ( head != NULL ) {
-	/* remove head */
-	if ( rmdir( head->path ) != 0 ) {
-	    perror( head->path );
+    while ( ap_head != NULL ) {
+	/* remove ap_head */
+        if ( rmdir( (char *) ap_head->path ) != 0 ) {
+	    perror( (char *) ap_head->path );
 	    goto error2;
 	}
-	if ( !quiet && !showprogress ) printf( "%s: deleted\n", head->path );
+	if ( !quiet && !showprogress ) printf( "%s: deleted\n", ap_head->path );
 	if ( showprogress ) {
-	    progressupdate( PROGRESSUNIT, head->path );
+	    progressupdate( PROGRESSUNIT, ap_head->path );
 	}
-	node = head;
-	head = node->next;
-	if ( node->doline ) {
-	    if ( do_line( node->tline, node->tran, 0, &st, sn ) != 0 ) {
+	ap_node = ap_head;
+	ap_head = ap_node->next;
+	if ( ap_node->doline ) {
+	    if ( do_line( ap_node->tline, ap_node->tran, 0, &st, sn ) != 0 ) {
 		goto error2;
 	    }
 	    change = 1;
 	}
-	node_free( node );
+	apply_node_free( ap_node );
     }
     acav_free( acav ); 
     

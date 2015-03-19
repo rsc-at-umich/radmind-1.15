@@ -1,37 +1,47 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2013 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
+#if !defined(_RADMIND_LIST_H)
+#  define _RADMIND_LIST_H "$Id$"
+
+#  include "filepath.h"
+
+typedef struct node node_t;
+
 struct list
 {
-    int			l_count;
-    struct node		*l_head;	
-    struct node		*l_tail;	
+    int		l_count;
+    node_t	*l_head;	
+    node_t	*l_tail;	
 };
 
 struct node
 {
-    char 		n_path[ MAXPATHLEN ];
-    struct node 	*n_next;
-    struct node 	*n_prev;
+    filepath_t	n_path[ MAXPATHLEN ];
+    node_t 	*n_next;
+    node_t 	*n_prev;
 };
 
-#define list_size( list )   ((list) ? (list)->l_count : 0 )
+typedef struct list list_t;
 
-struct list *	list_new( void );
-void		list_clear( struct list *list );
-void		list_free( struct list *list );
-void 		list_print( struct list *list );
-int 		list_insert( struct list *list, char *path );
-int 		list_insert_case( struct list *list, char *path,
-			int case_sensitive );
-int 		list_insert_head( struct list *list, char *path );
-int 		list_insert_tail( struct list *list, char *path );
-int 		list_remove( struct list *list, char *path );
-void 		list_remove_head( struct list *list );
-void 		list_remove_tail( struct list *list );
-struct node *	list_pop_head( struct list *list );
-struct node *	list_pop_tail( struct list *list );
-int		list_check( struct list *list, char *path );
-int		list_check_case( struct list *list, char *path );
+#  define list_size( list )   ((list) ? (list)->l_count : 0 )
+
+extern list_t  	      *	list_new( void );
+extern void		list_clear( list_t *list );
+extern void		list_free( list_t *list );
+extern void 		list_print( list_t *list );
+extern int 		list_insert( list_t *list, const filepath_t *path );
+extern int 		list_insert_case( list_t *list, const filepath_t *path,
+					  int case_sensitive );
+extern int 		list_insert_head( list_t *list, const filepath_t *path );
+extern int 		list_insert_tail( list_t *list, const filepath_t *path );
+extern int 		list_remove( list_t *list, const filepath_t *path );
+extern void 		list_remove_head( list_t *list );
+extern void 		list_remove_tail( list_t *list );
+extern node_t	      * list_pop_head( list_t *list );
+extern node_t	      * list_pop_tail( list_t *list );
+extern int		list_check( const list_t *list, const filepath_t *path );
+extern int		list_check_case( const list_t *list, const filepath_t *path );
+#endif /* defined(_RADMIND_LIST_H) */

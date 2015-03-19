@@ -1,9 +1,15 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2013 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
-#include <sys/stat.h>
+#if !defined(_RADMIND_TRANSCRIPT_H)
+#  define _RADMIND_TRANSCRIPT_H "$Id$"
+
+#  include "filepath.h"
+#  include "applefile.h"
+
+#  include <sys/stat.h>
 
 #define T_NULL		0
 #define T_POSITIVE	1
@@ -43,36 +49,55 @@ extern int		 debug;
 struct pathinfo {
     char			pi_type;
     int				pi_minus;
-    char			pi_name[ MAXPATHLEN ];
-    char			pi_link[ MAXPATHLEN ];
+    filepath_t		        pi_name[ MAXPATHLEN ];
+    filepath_t 		        pi_link[ MAXPATHLEN ];
     struct stat			pi_stat;
     char			pi_cksum_b64[ MAXPATHLEN ];
     struct applefileinfo	pi_afinfo;
 };
 
+typedef struct pathinfo pathinfo_t;
+
+/* Buffer small transcripts in memory to avoid fd exhaustion */
+extern size_t       transcript_buffer_size;
+extern unsigned int transcripts_buffered;  /* Count of transcripts */
+extern unsigned int transcripts_unbuffered; /* Count of transcripts */
+
+typedef struct transcript transcript_t;
+
 struct transcript {
-    struct transcript	*t_next;
-    struct transcript	*t_prev;
-    struct pathinfo	t_pinfo;
+    transcript_t	*t_next;
+    pathinfo_t		t_pinfo;
     int 		t_type;
     int			t_num;
-    char		t_fullname[ MAXPATHLEN ];
-    char		t_shortname[ MAXPATHLEN ];
-    char		t_kfile[ MAXPATHLEN ];
+    filepath_t		t_fullname[ MAXPATHLEN ];
+    filepath_t		t_shortname[ MAXPATHLEN ];
+    filepath_t		t_kfile[ MAXPATHLEN ];
     int			t_linenum;
     int			t_eof;
     FILE		*t_in;
     unsigned int	id;
+    char                *buffered; /* Full transcript buffer */
+    char		*buffer_position;
 };
 
-int			transcript_check( char *, struct stat *, char *, struct applefileinfo *, int );
-void			transcript_init( char *kfile, int location );
-struct transcript	*transcript_select( void );
-void			transcript_parse( struct transcript * );
-void			transcript_free( void );
-void			t_new( int, char *, char *, char * );
-int			t_exclude( char *path );
-void			t_print( struct pathinfo *, struct transcript *, int );
-char			*hardlink( struct pathinfo * );
-int			hardlink_changed( struct pathinfo *, int );
-void			hardlink_free( void );
+extern transcript_t *tran_head;	/* Global ordered list of transcripts. */
+
+extern int	     transcript_check( const filepath_t *path, 
+				       struct stat *st, char *type,
+				       struct applefileinfo *afinfo,
+				       int parent_minus);
+extern void	     transcript_init( const filepath_t *kfile, int location );
+extern transcript_t *transcript_select( void );
+extern void	     transcript_parse( transcript_t *tran );
+extern void	     transcript_free( void );
+extern void	     t_new( int type, const filepath_t *fullname,
+			    const filepath_t *shortname,
+			    const filepath_t *kfile );
+extern int	     t_exclude( const filepath_t *path );
+extern void	     t_print( pathinfo_t *fs, transcript_t *tran, int flag);
+extern char	    *hardlink( pathinfo_t *pinfo );
+extern int	     hardlink_changed( pathinfo_t *pinfo, int set);
+extern void	     hardlink_free( void );
+
+#endif /* defined (_RADMIND_TRANSCRIPT_H) */

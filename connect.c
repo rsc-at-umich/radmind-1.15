@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007 Regents of The University of Michigan.
+ * Copyright (c) 2007, 2013 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -36,19 +36,19 @@
 #define RADMIND_IANA_PORT	6222
 #define RADMIND_LEGACY_PORT	6662
 
-extern void            (*logger)( char * );
 extern int              verbose;
 struct timeval          timeout = { 60, 0 };
 extern int		errno;
 extern SSL_CTX  	*ctx;
 
+void (*logger)( const char * ) = NULL;
 
 #ifdef HAVE_ZLIB
 int zlib_level = 0;
 #endif
 
     void
-v_logger( char *line )
+v_logger( const char *line )
 {
     printf( "<<< %s\n", line );
     return;
@@ -98,7 +98,7 @@ connectsn2( struct sockaddr_in *sin )
 }
 
     SNET *
-connectsn( char *host, unsigned short port )
+connectsn( const char *host, unsigned short port )
 {
     int			i;
     struct hostent      *he;
@@ -332,7 +332,7 @@ print_stats( SNET *sn )
  *      1:      type in capability list
  */
     int
-check_capability( char *type, char **capa )
+check_capability( const char *type, char **capa )
 {
     char **p;
 

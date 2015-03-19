@@ -38,10 +38,12 @@
 #include "transcript.h"
 #include "code.h"
 #include "wildcard.h"
+#include "usageopt.h"
 
-void			(*logger)( char * ) = NULL;
+char	               *progname = "lfdiff";
 extern struct timeval	timeout;
 int			verbose = 0;
+extern int		debug;
 int			dodots = 0;
 int			linenum = 0;
 int			cksum = 0;
@@ -56,7 +58,7 @@ SSL_CTX  		*ctx;
 extern char             *caFile, *caDir, *cert, *privatekey;
 
    static struct transcript *
-precedent_transcript( char *kfile, char *file, int where )
+precedent_transcript(const unsigned char *kfile, const unsigned char *file, int where )
 {
     extern struct transcript	*tran_head;
     struct stat		file_stat;
@@ -65,8 +67,8 @@ precedent_transcript( char *kfile, char *file, int where )
 
     /* verify that file exists on the local system */
     memset ((void *) &file_stat, 0, sizeof(file_stat));
-    if ( lstat( file, &file_stat ) < 0 ) {
-	perror( file );
+    if ( lstat( (char *) file, &file_stat ) < 0 ) {
+      perror( (char *) file );
 	exit( 2 );
     }
 
@@ -167,7 +169,7 @@ precedent_transcript( char *kfile, char *file, int where )
 		    if ((file_stat.st_mode & ALLPERMS) != (tran->t_pinfo.pi_stat.st_mode & ALLPERMS)) {
 			if (!msg)
 		    	    printf ("#  File: '%s' from t:['%s'] k:['%s'] line %d\n#\t",
-				file, tran->t_shortname, tran->t_kfile, tran->t_linenum);
+				    file, tran->t_shortname, tran->t_kfile, (long unsigned) tran->t_linenum);
 		        else
 		    	    printf (", ");
 
@@ -178,12 +180,12 @@ precedent_transcript( char *kfile, char *file, int where )
 		    if (file_stat.st_uid != tran->t_pinfo.pi_stat.st_uid) {
 		        if (!msg)
 		    	    printf ("#  File: '%s' from t:['%s'] k:['%s'] line %d\n#\t",
-				file, tran->t_shortname, tran->t_kfile, tran->t_linenum);
+				    file, tran->t_shortname, tran->t_kfile, (long unsigned) tran->t_linenum);
 		        else
 		    	    printf (", ");
 
 		        msg++;
-		        printf ("uid (%lu != %lu)", tran->t_pinfo.pi_stat.st_uid, file_stat.st_uid);
+		        printf ("uid (%lu != %lu)", (long unsigned) tran->t_pinfo.pi_stat.st_uid, (long unsigned) file_stat.st_uid);
 		    }
 
 		    if (file_stat.st_gid != tran->t_pinfo.pi_stat.st_gid) {
@@ -259,7 +261,8 @@ precedent_transcript( char *kfile, char *file, int where )
 		    	    fprintf (stderr, ", ");
 
 		        msg++;
-		        fprintf (stderr, "mode (%o != %o)", (tran->t_pinfo.pi_stat.st_mode & ALLPERMS), (file_stat.st_mode & ALLPERMS));
+		        fprintf (stderr, "mode (%o != %o)", (tran->t_pinfo.pi_stat.st_mode & ALLPERMS),
+				 (file_stat.st_mode & ALLPERMS));
    		    }
 
 		    if ((file_stat.st_uid != tran->t_pinfo.pi_stat.st_uid) || (debug > 1)) {
@@ -270,7 +273,8 @@ precedent_transcript( char *kfile, char *file, int where )
 		    	    fprintf (stderr, ", ");
 
 		        msg++;
-		        fprintf (stderr, "uid (%lu != %lu)", tran->t_pinfo.pi_stat.st_uid, file_stat.st_uid);
+		        fprintf (stderr, "uid (%lu != %lu)", (unsigned long) tran->t_pinfo.pi_stat.st_uid,
+				 (unsigned long) file_stat.st_uid);
 		    }
 
 		    if ((file_stat.st_gid != tran->t_pinfo.pi_stat.st_gid) || (debug > 1)) {
@@ -281,7 +285,8 @@ precedent_transcript( char *kfile, char *file, int where )
 		    	    fprintf (stderr, ", ");
 
 		        msg++;
-		        fprintf (stderr, "gid (%lu != %lu)", tran->t_pinfo.pi_stat.st_gid, file_stat.st_gid);
+		        fprintf (stderr, "gid (%lu != %lu)", (unsigned long) tran->t_pinfo.pi_stat.st_gid, 
+				 (unsigned long) file_stat.st_gid);
 		    }
 		    break;
 
@@ -302,6 +307,121 @@ precedent_transcript( char *kfile, char *file, int where )
     return( NULL );
 }
 
+extern char *optarg;
+extern int optind, opterr, optopt;
+
+/*
+ * Command-line options
+ *
+ * Formerly getopt - "h:IK:p:P:rST:u:Vvw:x:y:z:Z:bitcdefnC:D:sX:"
+ * Remaining "C:D:X:"
+ */
+
+static const usageopt_t main_usage[] = 
+  {
+    { (struct option) { "buffer-size", required_argument,  NULL, 'B' },
+      "Max size of transcript file to buffer in memory (reduces file descriptor usage)", "0-maxint"},
+
+    { (struct option) { "hostname",     required_argument, NULL, 'h' },
+      "Radmind server hostname to contact, defaults to '" _RADMIND_HOST "'", "domain-name" },
+
+    { (struct option) { "tcp-port",      required_argument, NULL, 'p'},
+      "TCP port on radmind server to connect to", "tcp-port#"}, 
+
+    { (struct option) { "ca-directory",  required_argument, NULL, 'P' },
+	      "Specify where 'ca.pem' can be found.", "pathname"},
+
+    { (struct option) { "ca-file",       required_argument, NULL, 'x' },
+	      "Specify the certificate authority file", "pem-file" },
+
+    { (struct option) { "cert",          required_argument, NULL, 'y' },
+	      "Certificate for authenticating client to radmind server", "pem-file"},
+
+    { (struct option) { "cert-key",      required_argument, NULL, 'z' },
+	      "Key file for --cert certificate", "key-file" },
+
+    { (struct option) { "case-insensitive", no_argument,   NULL, 'I' },
+     		"case insensitive when comparing paths", NULL },
+
+    { (struct option) { "random-file",   no_argument,        NULL, 'r' },
+	      "use random seed file $RANDFILE if that environment variable is set, $HOME/.rnd otherwise.  See RAND_load_file(3o).", NULL},
+
+    { (struct option) { "command-file", required_argument, NULL, 'K' },
+                "Specify command file, defaults to '" _RADMIND_COMMANDFILE "'", "command.K" },
+
+    { (struct option) { "special-file", no_argument,      NULL, 'S' },
+	      "<file> is a 'special' file", NULL},
+
+    { (struct option) { "transcript",   required_argument,  NULL, 'T' },
+	      "Specify transcript <file> is from", "pathname" },
+#if defined(HAVE_ZLIB)
+    { (struct option) { "zlib-level",   required_argument,   NULL, 'Z'},
+	      "Specify zlib compression level", "number"},
+#else
+    { (struct option) { "zlib-level",   required_argument,   NULL, 'Z'},
+	      "Not available", "(number)"},
+#endif /* defined(HAVE_ZLIB) */
+
+    { (struct option) { "debug", no_argument, NULL, 'd' },
+      		"Raise debugging level to see what's happening", NULL},
+
+    { (struct option) { "verbose", no_argument, NULL, 'v' },
+      		"Turn on verbose mode", NULL },
+
+    { (struct option) { "help",         no_argument,       NULL, 'H' },
+     		"This message", NULL },
+    
+    { (struct option) { "version",      no_argument,       NULL, 'V' },
+     		"show version number of lfdiffand exits", NULL },
+    
+    { (struct option) { "umask",        required_argument,  NULL, 'u' },
+	      "specifies the umask for temporary files, by default 0077", "number" },
+
+    { (struct option) { "authentication",  required_argument, NULL, 'w' },
+	      "Specify the authentication level", "number" },
+
+
+    { (struct option) { "ignore-space-change", no_argument, NULL, 'b' },
+	      "(diff option -b)", NULL},
+
+    { (struct option) { "ignore-case", no_argument, NULL, 'i' },
+	      "(diff option -i)", NULL},
+
+    { (struct option) { "expand-tabs", no_argument, NULL, 't' },
+	      "(diff option -t)", NULL},
+
+    { (struct option) { NULL, no_argument, NULL, 'c' },
+	      "(diff option -c - but no NUM)", NULL},
+    
+    { (struct option) { "ed", no_argument, NULL, 'e' },
+	      "(diff option -e)", NULL},
+
+#if defined(DIFF_OPT_f)   
+    { (struct option) { "ignore-space-change", no_argument, NULL, 'f' },
+	      "(diff option -f)", NULL},
+#endif
+
+    { (struct option) { "rcs", no_argument, NULL, 'n' },
+	      "(diff option -n)", NULL},
+
+    { (struct option) { "report-identical-files", no_argument, NULL, 's' },
+	      "(diff option -s)", NULL},
+
+    { (struct option) { "context", required_argument, NULL, 'C' },
+	      "(diff option -C)", NULL},
+
+    { (struct option) { "ifdef", required_argument, NULL, 'D' },
+	      "(diff option -D)", NULL},
+
+    { (struct option) { "diff-options", required_argument, NULL, 'X' },
+	      "Unsupported 'diff' options", "diff-arg"},
+
+    /* End of list */
+    { (struct option) {(char *) NULL, 0, (int *) NULL, 0}, (char *) NULL, (char *) NULL}
+  }; /* end of main_usage[] */
+
+/* Main */
+
 /*
  * exit codes:
  *      0       No differences were found.
@@ -319,22 +439,34 @@ main( int argc, char **argv, char **envp )
     extern int          optind; 
     extern char		*version;
     char		*host = _RADMIND_HOST;
-    char		*transcript = NULL;
-    char		*file = NULL;
-    char		*kfile = _RADMIND_COMMANDFILE;
+    filepath_t		*transcript = NULL;
+    filepath_t		*file = NULL;
+    filepath_t		*kfile = (filepath_t *) _RADMIND_COMMANDFILE;
     char		*diff = _PATH_GNU_DIFF;
     char		**diffargv;
     char		**argcargv;
-    char 		pathdesc[ 2 * MAXPATHLEN ];
-    char 		*path = "/tmp/lfdiff";
-    char 		temppath[ MAXPATHLEN ];
+    filepath_t 		pathdesc[ 2 * MAXPATHLEN ];
+    filepath_t 		*path = (filepath_t *) "/tmp/lfdiff";
+    filepath_t 		temppath[ MAXPATHLEN ];
     char		opt[ 3 ];
-    char		*epath;		/* encoded path */
+    const char 		*epath;		/* encoded path */
     char        	**capa = NULL; /* capabilities */
     SNET		*sn;
     int                 authlevel = _RADMIND_AUTHLEVEL;
     int                 use_randfile = 0;
+    int                 optndx = 0;
+    int			tmp_i;
     struct transcript	*tran;
+    struct option      *main_opts;
+    char               *main_optstr;
+
+    /* Get our name from argv[0] */
+    for (main_optstr = argv[0]; *main_optstr; main_optstr++) {
+        if (*main_optstr == '/')
+	    progname = main_optstr+1;
+    }
+
+    main_opts = usageopt_option_new (main_usage, &main_optstr);
 
     /* create argv to pass to diff */
     if (( diffargv = (char **)malloc( 1  * sizeof( char * ))) == NULL ) {
@@ -344,9 +476,16 @@ main( int argc, char **argv, char **envp )
     diffargc = 0;
     diffargv[ diffargc++ ] = diff;
 
-    while (( c = getopt ( argc, argv,
-	    "h:IK:p:P:rST:u:Vvw:x:y:z:Z:bitcdefnC:D:sX:" )) != EOF ) {
+    while (( c = getopt_long (argc, argv, main_optstr, main_opts, &optndx)) != -1) {
 	switch( c ) {
+	case 'B':
+	    tmp_i = atoi (optarg);
+
+	    if ((errno == 0) && (tmp_i >= 0)) {
+	        transcript_buffer_size = tmp_i;
+	    }
+	    break;
+
 	case 'I':
 	    case_sensitive = 0;
 	    break;
@@ -356,7 +495,7 @@ main( int argc, char **argv, char **envp )
 	    break;
 
 	case 'K':
-	    kfile = optarg;
+	    kfile = (filepath_t *) optarg;
 	    break;
 
 	case 'p':
@@ -377,7 +516,7 @@ main( int argc, char **argv, char **envp )
 	    break;
 
 	case 'T':
-	    transcript = optarg;
+	    transcript = (filepath_t *) optarg;
 	    break;
 
         case 'u' :              /* umask */
@@ -436,9 +575,11 @@ main( int argc, char **argv, char **envp )
 
 
 	/* diff options */
-	case 'b': case 'i': case 't':
-	case 'c': case 'e': case 'f': case 'n':
-	case 's':
+#if defined(DIFF_OPT_f)
+	case 'f':
+#endif
+	case 'b': case 'c': case 'i': case 't':
+	case 'e': case 'n': case 's':
 	    if (( diffargv = (char **)realloc( diffargv, ( sizeof( *diffargv )
 		    + ( 2 * sizeof( char * ))))) == NULL ) {
 		perror( "malloc" );
@@ -501,6 +642,11 @@ main( int argc, char **argv, char **envp )
 	    }
 	    break;
 
+	case 'H':  /* --help */
+	  usageopt_usage (stdout, 1 /* verbose */, progname,  main_usage,
+			  "<file>", 80);
+	  exit (0);
+
 	case '?':
 	    err++;
 	    break;
@@ -511,7 +657,7 @@ main( int argc, char **argv, char **envp )
     }
 
     if (( transcript == NULL ) && ( !special )) {
-	if (( file = argv[ argc - 1 ] ) == NULL ) {
+      if (( file = (filepath_t *) argv[ argc - 1 ] ) == NULL ) {
 	    err++;
 	} else {
 	    if (( tran = precedent_transcript( kfile,
@@ -525,14 +671,16 @@ main( int argc, char **argv, char **envp )
 	    }
 
 	    if (debug)
-	    	fprintf(stderr, "*debug: Found '%s' in t:['%s'] from k:['%s'] line %d, ID=%u\n",
-			file, tran->t_shortname, tran->t_kfile, tran->t_linenum, tran->id);
+	    	fprintf(stderr,
+			"*debug: Found '%s' in t:['%s'] from k:['%s'] line %lu, ID=%u\n",
+			(char *) file, (char *) tran->t_shortname, (char *) tran->t_kfile,
+			(unsigned long) tran->t_linenum, tran->id);
 
 	    /* check for special */
-	    if ( strcmp( tran->t_shortname, "special.T" ) == 0 ) {
+	    if ( strcmp( (char *) tran->t_shortname, "special.T" ) == 0 ) {
 		special = 1;
 	    } else {
-		transcript = tran->t_shortname;
+	        transcript = tran->t_shortname;
 	    }
 	}
     }
@@ -544,21 +692,12 @@ main( int argc, char **argv, char **envp )
     }
 
     if ( err || ( argc - optind != 1 )) {
-	fprintf( stderr, "usage: %s ", argv[ 0 ] );
-	fprintf( stderr, "[ -IrvVd ] " );
-	fprintf( stderr, "[ -T transcript | -S ] " );
-	fprintf( stderr, "[ -h host ] [ -p port ] [ -P ca-pem-directory ] " );
-	fprintf( stderr, "[ -u umask ] " );
-        fprintf( stderr, "[ -w auth-level ] [ -x ca-pem-file ] " );
-        fprintf( stderr, "[ -y cert-pem-file] [ -z key-pem-file ] " );
-	fprintf( stderr, "[ -Z compression-level ] " );
-	fprintf( stderr, "[ supported diff options ] " );
-	fprintf( stderr, "[ -X \"unsupported diff options\" ] " );
-	fprintf( stderr, "file\n" );
+        usageopt_usage (stderr, 0 /* not verbose */, progname,  main_usage,
+			"<file>", 80);
 	exit( 2 );
     }
-    file = argv[ optind ];
-    len = strlen( file );
+    file = (filepath_t *) argv[ optind ];
+    len = filepath_len(file );
 
     /* Determine if called with relative or absolute pathing.  Path is relative
      * if it's just '.' or starts with './'.  File names that start with a '.'
@@ -606,24 +745,24 @@ main( int argc, char **argv, char **envp )
 #endif /* HAVE_ZLIB */
 
     /* encode path */
-    if (( epath = encode( file )) == NULL ) {
+    if (( epath = encode( (char *) file )) == NULL ) {
 	fprintf( stderr, "filename too long: %s\n", file );
 	exit( 2 );
     }
 
     /* create path description */
     if ( special ) {
-	if ( snprintf( pathdesc, ( MAXPATHLEN * 2 ), "SPECIAL %s",
+	if ( snprintf( (char *) pathdesc, ( MAXPATHLEN * 2 ), "SPECIAL %s",
 		epath ) >= ( MAXPATHLEN * 2 )) {
 	    fprintf( stderr, "RETR SPECIAL %s: path description too long\n",
 		    file );
 	    exit( 2 );
 	}
     } else {
-	if ( snprintf( pathdesc, ( MAXPATHLEN * 2 ), "FILE %s %s",
-		transcript, epath ) >= ( MAXPATHLEN * 2 )) {
+	if ( snprintf( (char *) pathdesc, ( MAXPATHLEN * 2 ), "FILE %s %s",
+		       (char *) transcript, epath ) >= ( MAXPATHLEN * 2 )) {
 	    fprintf( stderr, "RETR FILE %s %s: path description too long\n",
-		    transcript, epath );
+		     (char *) transcript, epath );
 	    exit( 2 );
 	}
     }
@@ -640,18 +779,18 @@ main( int argc, char **argv, char **envp )
     if ( verbose && zlib_level > 0 ) print_stats( sn );
 #endif /* HAVE_ZLIB */
 
-    if (( fd = open( temppath, O_RDONLY )) < 0 ) {
-	perror( temppath );
+    if (( fd = open( (char *) temppath, O_RDONLY )) < 0 ) {
+	perror( (char *) temppath );
 	exit( 2 );
     } 
 
     if (debug == 0) {
-        if ( unlink( temppath ) != 0 ) {
-	    perror( temppath );
+        if ( unlink( (char *) temppath ) != 0 ) {
+	    perror( (char *) temppath );
 	    exit( 2 );
         }
         if ( dup2( fd, 0 ) < 0 ) {
-	    perror( temppath );
+	    perror( (char *) temppath );
 	    exit( 2 );
         }
         if (( diffargv = (char **)realloc( diffargv, ( sizeof( *diffargv )
@@ -661,7 +800,7 @@ main( int argc, char **argv, char **envp )
         }
         diffargv[ diffargc++ ] = "--";
         diffargv[ diffargc++ ] = "-";
-        diffargv[ diffargc++ ] = file; 
+        diffargv[ diffargc++ ] = (char *) file; 
         diffargv[ diffargc++ ] = NULL;
     }
     else {
@@ -671,8 +810,8 @@ main( int argc, char **argv, char **envp )
 	    exit( 2 );
         }
         diffargv[ diffargc++ ] = "--";
-        diffargv[ diffargc++ ] = temppath;
-        diffargv[ diffargc++ ] = file; 
+        diffargv[ diffargc++ ] = (char *) temppath;
+        diffargv[ diffargc++ ] = (char *) file; 
         diffargv[ diffargc++ ] = NULL;
     }
 
@@ -690,6 +829,12 @@ main( int argc, char **argv, char **envp )
 
 	fprintf (stderr, "], envp=%p)\n", envp);
     } /* if (debug) */
+
+
+    if ((debug > 0) && (transcript_buffer_size > 0)) {
+        printf ("%u transcripts buffered, %u transcripts not buffered\n", 
+		transcripts_buffered, transcripts_unbuffered);
+    }
 
     execve( diff, diffargv, envp );
 

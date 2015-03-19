@@ -14,42 +14,44 @@
 #include "applefile.h"
 #include "transcript.h"
 
+
+typedef struct devlist devlist_t;
+typedef struct inolist inolist_t;
+
 struct devlist {
-    struct devlist	*d_next;
+    devlist_t		*d_next;
     dev_t		d_dev;
     struct inolist	*d_ilist;
 };
 
 struct inolist {
-    struct inolist	*i_next;
+    inolist_t		*i_next;
     ino_t		i_ino;
     char		*i_name;
     int			i_flag;
 };
 
 
-static struct devlist	*dev_head = NULL;
+static devlist_t	*dev_head = (devlist_t *) NULL;
 
-static char		*i_insert( struct devlist *dev_head,
-				struct pathinfo *pinfo );
-static struct devlist	*d_insert( struct devlist **dev_head,
-				struct pathinfo *pinfo );
+static char		*i_insert( devlist_t *dev_head, pathinfo_t *pinfo );
+static devlist_t	*d_insert( devlist_t **dev_head, pathinfo_t *pinfo );
 void			hardlink_free( void );
 
     char *
-hardlink( struct pathinfo *pinfo )
+hardlink( pathinfo_t *pinfo )
 {
-    struct devlist	*device;
+    devlist_t	*device;
 
     device = d_insert( &dev_head, pinfo );
 
     return( i_insert( device, pinfo ));
 }
 
-    static struct devlist * 
-d_insert( struct devlist **dev_head, struct pathinfo *pinfo )
+    static devlist_t * 
+d_insert( devlist_t **dev_head, pathinfo_t *pinfo )
 {
-    struct devlist	*new, **cur;
+    devlist_t	*new, **cur;
 
     for ( cur = dev_head; *cur != NULL; cur = &(*cur)->d_next ) {
 	if ( pinfo->pi_stat.st_dev <= (*cur)->d_dev ) {
@@ -61,7 +63,7 @@ d_insert( struct devlist **dev_head, struct pathinfo *pinfo )
 	return( *cur );
     }
 
-    if (( new = ( struct devlist * ) malloc( sizeof( struct devlist ))) 
+    if (( new = ( devlist_t * ) malloc( sizeof( devlist_t ))) 
 	    == NULL ) {
 	perror( "d_insert malloc" );
 	exit( 2 );
@@ -76,9 +78,9 @@ d_insert( struct devlist **dev_head, struct pathinfo *pinfo )
 }
 
     static char *
-i_insert( struct devlist *dev_head, struct pathinfo *pinfo )
+i_insert( devlist_t *dev_head, pathinfo_t *pinfo )
 {
-    struct inolist	*new, **cur;
+    inolist_t	*new, **cur;
 
     for ( cur = &dev_head->d_ilist; *cur != NULL; cur = &(*cur)->i_next ) {
 	if ( pinfo->pi_stat.st_ino <= (*cur)->i_ino ) {
@@ -90,19 +92,17 @@ i_insert( struct devlist *dev_head, struct pathinfo *pinfo )
 	return( (*cur)->i_name );
     }
 
-    if (( new = ( struct inolist * ) malloc( sizeof( struct inolist ))) 
+    if (( new = ( inolist_t * ) malloc( sizeof( inolist_t ))) 
 	    == NULL ) {
 	perror( "i_insert malloc" );
 	exit( 2 );
     }
 
-    if (( new->i_name = ( char * ) malloc( strlen( pinfo->pi_name ) + 1 ))
-	    == NULL ) {
-	perror( "i_insert malloc" );
+    if (( new->i_name = strdup((char *) pinfo->pi_name )) == NULL ) {
+	perror( "i_insert strdup" );
 	exit( 2 );
     }
 
-    strcpy( new->i_name, pinfo->pi_name );
     new->i_ino = pinfo->pi_stat.st_ino;
     new->i_flag = 0;
 
@@ -116,10 +116,10 @@ i_insert( struct devlist *dev_head, struct pathinfo *pinfo )
     void
 hardlink_free( )
 {
-    struct devlist	*dev_next;
-    struct inolist	*ino_head, *ino_next;
+    devlist_t	*dev_next;
+    inolist_t	*ino_head, *ino_next;
 
-    while ( dev_head != NULL ) {
+    while ( dev_head != (devlist_t *) NULL ) {
 	dev_next = dev_head->d_next;
 	ino_head = dev_head->d_ilist;
 	while ( ino_head != NULL ) {
@@ -134,24 +134,24 @@ hardlink_free( )
 }
 
     int
-hardlink_changed( struct pathinfo *pinfo, int set )
+hardlink_changed( pathinfo_t *pinfo, int set )
 {
-    struct devlist	*dcur;
-    struct inolist	*icur;
+    devlist_t	*dcur;
+    inolist_t	*icur;
 
-    for ( dcur = dev_head; dcur != NULL; dcur = dcur->d_next ) {
+    for ( dcur = dev_head; dcur != (devlist_t *) NULL; dcur = dcur->d_next ) {
 	if ( pinfo->pi_stat.st_dev <= dcur->d_dev ) {
 	    break;
 	}
     }
     
-    if (( dcur == NULL ) || ( pinfo->pi_stat.st_dev != dcur->d_dev )) {
+    if (( dcur == (devlist_t *) NULL ) || ( pinfo->pi_stat.st_dev != dcur->d_dev )) {
 	fprintf( stderr, "hardlink_changed: %s: dev not found\n",
 		pinfo->pi_name );
 	exit( 2 );
     }
 
-    for ( icur = dcur->d_ilist; icur != NULL; icur = icur->i_next ) {
+    for ( icur = dcur->d_ilist; icur != (inolist_t *) NULL; icur = icur->i_next ) {
 	if ( pinfo->pi_stat.st_ino <= icur->i_ino ) {
 	    break;
 	}

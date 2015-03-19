@@ -20,6 +20,7 @@
 #include "mkdirs.h"
 #include "pathcmp.h"
 #include "root.h"
+#include "filepath.h"
 
 int		cksum = 1;
 int		verbose = 0;
@@ -27,76 +28,83 @@ int		noupload = 0;
 int		case_sensitive = 1;
 extern char   	*version;
 
-struct node {
-    char                path[ MAXPATHLEN ];
-    struct node         *next;
+typedef struct merge_node merge_node_t;
+
+struct merge_node {
+    filepath_t            path[ MAXPATHLEN ];
+    merge_node_t         *next;
 };
 
-struct node* create_node( char *path );
-void free_node( struct node *node );
+static merge_node_t* merge_node_create( const filepath_t *path );
+static void merge_node_free( merge_node_t *node );
 
-   struct node *
-create_node( char *path )
+   static merge_node_t *
+merge_node_create( const filepath_t *path )
 {
-    struct node         *new_node;
+    merge_node_t         *new_node;
 
-    if (( new_node = (struct node *) malloc( sizeof( struct node ))) == NULL ) {
+    if (( new_node = (merge_node_t *) malloc( sizeof( merge_node_t ))) == NULL ) {
 	perror( "malloc" );
 	return( NULL );
     }
-    if ( strlen( path ) >= MAXPATHLEN ) {
+    if ( filepath_len( path ) >= MAXPATHLEN ) {
 	fprintf( stderr, "%s: path too long\n", path );
+	free (new_node);
 	return( NULL );
     }
-    strcpy( new_node->path, path );
+    filepath_cpy( new_node->path, path );
 
     return( new_node );
 }
 
     void
-free_node( struct node *node )
+merge_node_free( merge_node_t *node )
 {
-    free( node );
+    if (node) {
+        free( node );
+    }
+
+    return;	/* pedantically */
 }
 
 struct tran {
-    struct node         *t_next;	/* Next tran in list */
+    merge_node_t        *t_next;	/* Next tran in list */
     FILE                *t_fd;		/* open file descriptor */
     int                 t_num;		/* Tran num from command line */
-    char                *t_path;	/* Path from command line */
+    filepath_t          *t_path;	/* Path from command line */
     int                 t_eof;		/* Tran at end of file */
     int                 t_linenum;	/* Current line number */
     int                 t_remove;	/* Current line has '-' */
-    char                t_prepath[ MAXPATHLEN ]; /* for order check */
-    char		t_tran_root[ MAXPATHLEN ];
-    char		t_file_root[ MAXPATHLEN ];
-    char		t_tran_name[ MAXPATHLEN ];
+    filepath_t          t_prepath[ MAXPATHLEN ]; /* for order check */
+    filepath_t		t_tran_root[ MAXPATHLEN ];
+    filepath_t		t_file_root[ MAXPATHLEN ];
+    filepath_t		t_tran_name[ MAXPATHLEN ];
     char                *t_line;
     char                t_tline[ 2 * MAXPATHLEN ];
-    char                t_filepath[ MAXPATHLEN ];
+    filepath_t          t_filepath[ MAXPATHLEN ];
     char                **t_argv;
     int                 t_tac;
     ACAV                *t_acav;
 };
 
-int getnextline( struct tran *tran ); 
+static int getnextline( struct tran *tran ); 
 
-    int
+    static int
 getnextline( struct tran *tran )
 {
     int		len;
-    char	*d_path;
+    const char	*d_path;
 
 getline:
     if ( fgets( tran->t_tline, MAXPATHLEN, tran->t_fd ) == NULL ) {
 	if ( feof( tran->t_fd )) {
 	    tran->t_eof = 1;
 	    return( 0 );
-	} else {
-	    perror( tran->t_path );
-	    return( -1 );
 	}
+	perror( (char *) tran->t_path );
+	return( -1 );
     }
+
     tran->t_linenum++;
 
     if ( tran->t_line != NULL ) {
@@ -144,7 +152,7 @@ getline:
 		tran->t_tran_name, tran->t_linenum, d_path );
 	return( 1 );
     }
-    strcpy( tran->t_filepath, d_path );
+    filepath_ncpy( tran->t_filepath, (filepath_t *) d_path, sizeof(tran->t_filepath)-1 );
 
     /* Check transcript order */
     if ( tran->t_prepath != 0 ) {
@@ -156,12 +164,12 @@ getline:
 	    return( 1 );
 	}
     }
-    if ( strlen( tran->t_filepath ) >= MAXPATHLEN ) {
+    if ( filepath_len( tran->t_filepath ) >= MAXPATHLEN ) {
 	fprintf( stderr, "%s: line %d: %s: path too long\n",
 		tran->t_tran_name, tran->t_linenum, tran->t_filepath );
 	return( 1 );
     }
-    strcpy( tran->t_prepath, tran->t_filepath );
+    filepath_cpy( tran->t_prepath, tran->t_filepath );
 
 
     return( 0 );
@@ -250,16 +258,16 @@ main( int argc, char **argv )
     char		*file = NULL;
     char		npath[ 2 * MAXPATHLEN ];
     char		opath[ 2 * MAXPATHLEN ];
-    char		*radmind_path = _RADMIND_PATH;
-    char		cwd[ MAXPATHLEN ];
-    char		file_root[ MAXPATHLEN ];
-    char		tran_root[ MAXPATHLEN ];
-    char		tran_name[ MAXPATHLEN ];
+    filepath_t		*radmind_path = (filepath_t *) _RADMIND_PATH;
+    filepath_t		cwd[ MAXPATHLEN ];
+    filepath_t		file_root[ MAXPATHLEN ];
+    filepath_t		tran_root[ MAXPATHLEN ];
+    filepath_t		tran_name[ MAXPATHLEN ];
     char		temp[ MAXPATHLEN ];
     struct tran		**trans = NULL;
-    struct node		*new_node = NULL;
-    struct node		*node = NULL;
-    struct node		*dirlist = NULL;
+    merge_node_t	*new_node = NULL;
+    merge_node_t	*node = NULL;
+    merge_node_t	*dirlist = NULL;
     FILE		*ofs;
     mode_t		mask;
 
@@ -269,7 +277,7 @@ main( int argc, char **argv )
 	    copy = 1;
 	    break;
 	case 'D':
-	    radmind_path = optarg;
+	    radmind_path = (filepath_t *) optarg;
 	    break;
 	case 'f':
 	    force = 1;
@@ -354,22 +362,23 @@ main( int argc, char **argv )
 	perror( "malloc" );
 	exit( 2 );
     }
-    if ( getcwd( cwd, MAXPATHLEN ) == NULL ) {
+    if ( getcwd( (char *) cwd, sizeof(cwd)-1 ) == NULL ) {
         perror( "getcwd" );
         exit( 2 );
     }
+    cwd[sizeof(cwd)-1] = '\0'; /* Safety */
 
     /* loop over array of trans */
     for ( i = 0;  i < tcount;  i++ ) {
 
-	if ( ( trans[ i ] = (struct tran*)malloc( sizeof( struct tran ) ) )
+        if ( ( trans[ i ] = (struct tran*)calloc(1,  sizeof( struct tran ) ) )
 		== NULL ) {
 	    perror( "malloc" );
 	    return( 1 );
 	}
 	memset( trans[ i ], 0, sizeof( struct tran ));
 	trans[ i ]->t_num = i;
-	trans[ i ]->t_path = argv[ i + optind ];
+	trans[ i ]->t_path = (filepath_t *) argv[ i + optind ];
 
 	if ( get_root( radmind_path, trans[ i ]->t_path, trans[ i ]->t_file_root,
 		trans[ i ]->t_tran_root, trans[ i ]->t_tran_name ) != 0 ) {
@@ -377,8 +386,8 @@ main( int argc, char **argv )
 	}
 
 	/* open tran */
-	if (( trans[ i ]->t_fd = fopen( trans[ i ]->t_path, "r" )) == NULL ) {
-	    perror( trans[ i ]->t_path );
+	if (( trans[ i ]->t_fd = fopen( (char *) trans[ i ]->t_path, "r" )) == NULL ) {
+	  perror( (char *) trans[ i ]->t_path );
 	    return( 1 );
 	}
 
@@ -393,21 +402,21 @@ main( int argc, char **argv )
     }
 
     if ( force ) {
-	if ( strlen( trans[ 1 ]->t_file_root ) >= MAXPATHLEN ) {
+	if ( filepath_len( trans[ 1 ]->t_file_root ) >= MAXPATHLEN ) {
 	    fprintf( stderr, "%s: path too long\n", trans[ 1 ]->t_file_root );
 	    exit( 2 );
 	}
-	strcpy( file_root, trans[ 1 ]->t_file_root );
-	if ( strlen( trans[ 1 ]->t_tran_root ) >= MAXPATHLEN ) {
+	filepath_ncpy( file_root, trans[ 1 ]->t_file_root, sizeof(file_root) );
+	if ( filepath_len( trans[ 1 ]->t_tran_root ) >= MAXPATHLEN ) {
 	    fprintf( stderr, "%s: path too long\n", trans[ 1 ]->t_tran_root );
 	    exit( 2 );
 	}
-	strcpy( tran_root, trans[ 1 ]->t_tran_root );
-	if ( strlen( trans[ 1 ]->t_tran_name ) >= MAXPATHLEN ) {
+	filepath_ncpy( tran_root, trans[ 1 ]->t_tran_root, sizeof(tran_root) );
+	if ( filepath_len( trans[ 1 ]->t_tran_name ) >= MAXPATHLEN ) {
 	    fprintf( stderr, "%s: path too long\n", trans[ 1 ]->t_tran_name );
 	    exit( 2 );
 	}
-	strcpy( tran_name, trans[ 1 ]->t_tran_name );
+	filepath_ncpy( tran_name, trans[ 1 ]->t_tran_name, sizeof(tran_name) );
     } else {
 	/* Create tran if missing */
 	if (( ofd = open( argv[ argc - 1 ], O_WRONLY | O_CREAT, 0666 ) ) < 0 ) {
@@ -425,23 +434,25 @@ main( int argc, char **argv )
 		fprintf( stderr, "%s: path too long\n", argv[ argc - 1 ] );
 		exit( 2 );
 	    }
-	    strcpy( cwd, argv[ argc - 1 ] );
+	    filepath_ncpy( cwd, (filepath_t *) argv[ argc - 1 ], sizeof(cwd)-1 );
+	    cwd[sizeof(cwd)-1] = '\0'; /* Safety */
 	} else {
-	    if ( snprintf( temp, MAXPATHLEN, "%s/%s", cwd, argv[ argc - 1 ] )
+	  if ( snprintf( temp, MAXPATHLEN, "%s/%s", (char *) cwd, argv[ argc - 1 ] )
 		    >= MAXPATHLEN ) {
 		fprintf( stderr, "%s/%s: path too long\n", cwd,
 		    argv[ argc - 1 ] );
 		exit( 2 );
 	    }
-	    strcpy( cwd, temp );
+	  filepath_ncpy( cwd, (filepath_t *) temp, sizeof(cwd)-1 );
+	    cwd[sizeof(cwd)-1] = '\0'; /* Saftey */
 	}
 	if ( get_root( radmind_path, cwd, file_root, tran_root, tran_name ) != 0 ) {
 	    exit( 2 );
 	}
 
 	/* Create file/tname dir */
-	if ( snprintf( npath, MAXPATHLEN, "%s/%s.%d", file_root, tran_name,
-		(int)getpid()) >= MAXPATHLEN ) {
+	if ( snprintf( npath, MAXPATHLEN, "%s/%s.%d", (char *) file_root,
+		       (char *) tran_name, (int)getpid()) >= MAXPATHLEN ) {
 	    fprintf( stderr, "%s/%s.%d: path too long\n", file_root, tran_name,
 		(int)getpid());
 	    exit( 2 );
@@ -551,7 +562,8 @@ main( int argc, char **argv )
 		    (( noupload ) && ( candidate == 0 ) && ( fileloc == 0 ))) {
 		if ( match && force &&
 			( *trans[ candidate ]->t_argv[ 0 ] == 'd' )) {
-		    new_node = create_node( trans[ candidate ]->t_argv[ 1 ] );
+		    new_node = 
+		    	merge_node_create( (filepath_t *) (trans[ candidate ]->t_argv[ 1 ]) );
 		    new_node->next = dirlist;
 		    dirlist = new_node;
 		}
@@ -641,7 +653,7 @@ main( int argc, char **argv )
 			    exit( 2 );
 			}
 		    }
-		    if ( mkdirs( npath ) != 0 ) {
+		    if ( mkdirs( (filepath_t *) npath ) != 0 ) {
 			fprintf( stderr, "%s: mkdirs failed\n", npath );
 			exit( 2 );
 		    }
@@ -722,7 +734,7 @@ skipline:
 		if ( verbose ) printf( "%s: %s: unlinked\n", tran_name,
 		    node->path );
 	    }
-	    free_node( node );
+	    merge_node_free( node );
 	}
     }
 

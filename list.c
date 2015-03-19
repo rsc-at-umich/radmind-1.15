@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2013 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -14,42 +14,42 @@
 #include "list.h"
 #include "pathcmp.h"
 
-struct node *   _list_create_node( char *path );
+static node_t *   _list_create_node( const filepath_t *path );
 
-   struct node *
-_list_create_node( char *path )
+   static node_t *
+_list_create_node( const filepath_t *path )
 {
-    struct node 	*new_node;
+    node_t 	*new_node;
 
-    if ( strlen( path ) >= MAXPATHLEN ) {
+    if ( filepath_len( path ) >= MAXPATHLEN ) {
 	errno = ENAMETOOLONG;
 	return( NULL );
     }
 
-    if (( new_node = (struct node *) malloc( sizeof( struct node ))) == NULL ) {
+    if (( new_node = (node_t *) malloc( sizeof( node_t ))) == NULL ) {
 	return( NULL );
     }
-    memset( new_node, 0, sizeof( struct node ));
-    sprintf( new_node->n_path, "%s", path );
+    memset( new_node, 0, sizeof( node_t ));
+    filepath_ncpy (new_node->n_path, path, sizeof(new_node->n_path)-1);
 
     return( new_node );
 }
 
-    struct list *
+    list_t *
 list_new( void )
 {
-    struct list 	*list;
+    list_t 	*list;
 
-    if (( list = malloc( sizeof( struct list ))) == NULL ) {
+    if (( list = malloc( sizeof( list_t ))) == NULL ) {
 	return( NULL );
     }
     
-    memset( list, 0, sizeof( struct list ));
+    memset( list, 0, sizeof( list_t ));
     return( list );
 }
 
     void
-list_clear( struct list *list )
+list_clear( list_t *list )
 {
     /* Remove items from tail of list */
     while ( list->l_tail != NULL ) {
@@ -58,31 +58,31 @@ list_clear( struct list *list )
 }
 
     void
-list_free( struct list *list )
+list_free( list_t *list )
 {
     list_clear( list );
     free( list );
 }
 	
     void 
-list_print( struct list *list )
+list_print( list_t *list )
 {
-    struct node		*cur;
+    node_t		*cur;
     u_int		i;
 
     printf( "count: %d\n", list->l_count );
     for ( cur = list->l_head, i = 1; cur != NULL; cur = cur->n_next, i++ ) {
-	printf( "%d: %s ( prev %s next %s )\n", i, cur->n_path,
-	    cur->n_prev ? cur->n_prev->n_path : "NULL",
-	    cur->n_next ? cur->n_next->n_path : "NULL" );
+	printf( "%d: %s ( prev %s next %s )\n", i, (const char *) cur->n_path,
+	    cur->n_prev ? (const char *) cur->n_prev->n_path : "NULL",
+	    cur->n_next ? (const char *) cur->n_next->n_path : "NULL" );
     }
     printf( "\n" );
 }
 
    int 
-list_insert_case( struct list *list, char *path, int case_sensitive )
+list_insert_case( list_t *list, const filepath_t *path, int case_sensitive )
 {
-    struct node		*new_node, *cur;
+    node_t		*new_node, *cur;
 
     for ( cur = list->l_head; cur != NULL; cur = cur->n_next ) {
 	if ( pathcasecmp( cur->n_path, path, case_sensitive ) > 0 ) {
@@ -114,15 +114,15 @@ list_insert_case( struct list *list, char *path, int case_sensitive )
 }
 
     int
-list_insert( struct list *list, char *path )
+list_insert( list_t *list, const filepath_t *path )
 {
     return( list_insert_case( list, path, 1 ));
 }
 
    int 
-list_insert_head( struct list *list, char *path )
+list_insert_head( list_t *list, const filepath_t *path )
 {
-    struct node		*new_node;
+    node_t		*new_node;
 
     if (( new_node = _list_create_node( path )) == NULL ) {
 	return( -1 );
@@ -141,9 +141,9 @@ list_insert_head( struct list *list, char *path )
 }
 
    int 
-list_insert_tail( struct list *list, char *path )
+list_insert_tail( list_t *list, const filepath_t *path )
 {
-    struct node		*new_node;
+    node_t		*new_node;
 
     if (( new_node = _list_create_node( path )) == NULL ) {
 	return( -1 );
@@ -162,10 +162,10 @@ list_insert_tail( struct list *list, char *path )
 }
 
     int
-list_remove( struct list *list, char *path )
+list_remove( list_t *list, const filepath_t *path )
 {
     int			count = 0;
-    struct node		*cur;
+    node_t		*cur;
 
     for ( cur = list->l_head; cur != NULL; cur = cur->n_next ) {
 	if ( pathcmp( cur->n_path, path ) == 0 ) {
@@ -193,19 +193,19 @@ list_remove( struct list *list, char *path )
 }
 
     void
-list_remove_tail( struct list *list )
+list_remove_tail( list_t *list )
 {
-    struct node         *node;
+    node_t         *node;
 
     if (( node = list_pop_tail( list )) != NULL ) {
         free( node );
     }
 }
 
-    struct node *
-list_pop_tail( struct list * list )
+    node_t *
+list_pop_tail( list_t * list )
 {
-    struct node		*node;
+    node_t		*node;
 
     if ( list->l_tail == NULL ) {
 	return( NULL );
@@ -223,19 +223,19 @@ list_pop_tail( struct list * list )
 }
 
     void
-list_remove_head( struct list *list )
+list_remove_head( list_t *list )
 {
-    struct node		*node;
+    node_t		*node;
 
     if (( node = list_pop_head( list )) != NULL ) {
 	free( node );
     }
 }
 
-    struct node *
-list_pop_head( struct list *list )
+    node_t *
+list_pop_head( list_t *list )
 {
-    struct node		*node;
+    node_t		*node;
 
     if ( list->l_head == NULL ) {
 	return( NULL );
@@ -254,11 +254,11 @@ list_pop_head( struct list *list )
 }
 
     int
-list_check( struct list *list, char *path )
+list_check( const list_t *list, const filepath_t *path )
 {
-    struct node		*cur;
+    node_t		*cur;
 
-    for ( cur = list->l_head; cur != NULL; cur = cur->n_next ) {
+    for ( cur = list->l_head; cur != (node_t *) NULL; cur = cur->n_next ) {
 	if ( pathcmp( cur->n_path, path ) == 0 ) {
 	    return( 1 );
 	}

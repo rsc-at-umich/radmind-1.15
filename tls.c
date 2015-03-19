@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2013 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -31,11 +31,11 @@
 #define IS_DNS  0
 #define IS_IP4  1
 
+#include "connect.h"
 #include "tls.h"
     
 int _randfile( void );
 
-extern void            (*logger)( char * );
 extern int		verbose;
 extern SSL_CTX		*ctx;
 extern struct timeval	timeout;
@@ -76,7 +76,10 @@ _randfile( void )
 }
 
     int
-tls_server_setup( int use_randfile, int authlevel, char *caFile, char *caDir, char *crlFile, char *crlDir, char *cert, char *privatekey )
+tls_server_setup( int use_randfile, int authlevel,
+		  const char *caFile, const char *caDir,
+		  const char *crlFile, const char *crlDir,
+		  const char *cert, const char *privatekey )
 {
     extern SSL_CTX	*ctx;
     int                 ssl_mode = 0;
@@ -199,7 +202,9 @@ tls_server_setup( int use_randfile, int authlevel, char *caFile, char *caDir, ch
 }   
 
     int
-tls_client_setup( int use_randfile, int authlevel, char *caFile, char *caDir, char *cert, char *privatekey )
+tls_client_setup( int use_randfile, int authlevel, 
+		  const char *caFile, const char *caDir, 
+		  const char *cert, const char *privatekey )
 {
     extern SSL_CTX	*ctx;
     int                 ssl_mode = 0;
@@ -270,7 +275,7 @@ tls_client_setup( int use_randfile, int authlevel, char *caFile, char *caDir, ch
 }
 
     int
-tls_client_start( SNET *sn, char *host, int authlevel )
+tls_client_start( SNET *sn, const char *host, int authlevel )
 {
     X509            	*peer;
     char             	buf[ 1024 ];

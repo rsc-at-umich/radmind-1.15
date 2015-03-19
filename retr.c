@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2013 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -40,11 +40,9 @@
 #include "progress.h"
 #include "mkprefix.h"
 
-extern void            (*logger)( char * );
 extern struct timeval  	timeout;
 extern int 		linenum;
 extern int		verbose;
-extern int		showprogress;
 extern int		dodots;
 extern int		cksum;
 extern int		errno;
@@ -62,8 +60,9 @@ extern SSL_CTX  	*ctx;
  */
 
     int 
-retr( SNET *sn, char *pathdesc, char *path, char *temppath, mode_t tempmode,
-    off_t transize, char *trancksum )
+retr( SNET *sn, const filepath_t *pathdesc, const filepath_t *path, 
+      filepath_t *temppath, mode_t tempmode, off_t transize,
+      const char *trancksum )
 {
     struct timeval	tv;
     char		*line;
@@ -88,7 +87,7 @@ retr( SNET *sn, char *pathdesc, char *path, char *temppath, mode_t tempmode,
     }
 
     if ( verbose ) printf( ">>> RETR %s\n", pathdesc );
-    if ( snet_writef( sn, "RETR %s\n", pathdesc ) < 0 ) {
+    if ( snet_writef( sn, "RETR %s\n", (const char *) pathdesc ) < 0 ) {
 	fprintf( stderr, "retrieve %s failed: 1-%s\n", pathdesc,
 	    strerror( errno ));
 	return( -1 );
@@ -109,7 +108,7 @@ retr( SNET *sn, char *pathdesc, char *path, char *temppath, mode_t tempmode,
     /* Get file size from server */
     tv = timeout;
     if (( line = snet_getline( sn, &tv )) == NULL ) {
-	fprintf( stderr, "retrieve %s failed: 3-%s\n", pathdesc,
+          fprintf( stderr, "retrieve %s failed: 3-%s\n", pathdesc,
 	    strerror( errno ));
 	return( -1 );
     }
@@ -123,26 +122,26 @@ retr( SNET *sn, char *pathdesc, char *path, char *temppath, mode_t tempmode,
     }
 
     /*Create temp file name*/
-    if ( snprintf( temppath, MAXPATHLEN, "%s.radmind.%i",
-	    path, getpid()) >= MAXPATHLEN ) {
-	fprintf( stderr, "%s.radmind.%i: too long", path,
-		(int)getpid());
+    if ( snprintf( (char *) temppath, MAXPATHLEN, "%s.radmind.%i",
+		   (const char *) path, getpid()) >= MAXPATHLEN ) {
+        fprintf( stderr, "%s.radmind.%i: too long", (const char *)path,
+		 (int)getpid());
 	return( -1 );
     }
     /* Open file */
-    if (( fd = open( temppath, O_WRONLY | O_CREAT, tempmode )) < 0 ) {
+    if (( fd = open( (char *) temppath, O_WRONLY | O_CREAT, tempmode )) < 0 ) {
 	if ( create_prefix && errno == ENOENT ) {
 	    errno = 0;
 	    if ( mkprefix( temppath ) != 0 ) {
-		perror( temppath );
+	        perror( (char *) temppath );
 		return( -1 );
 	    }
-	    if (( fd = open( temppath, O_WRONLY | O_CREAT, tempmode )) < 0 ) {
-		perror( temppath );
+	    if (( fd = open( (char *) temppath, O_WRONLY | O_CREAT, tempmode )) < 0 ) {
+	        perror( (char *) temppath );
 		return( -1 );
 	    }
 	} else {
-	    perror( temppath );
+	    perror( (char *) temppath );
 	    return( -1 );
 	}
     }
@@ -160,7 +159,7 @@ retr( SNET *sn, char *pathdesc, char *path, char *temppath, mode_t tempmode,
 	    goto error2;
 	}
 	if ( write( fd, buf, (size_t)rr ) != rr ) {
-	    perror( temppath );
+	    perror( (char *) temppath );
 	    returnval = -1;
 	    goto error2;
 	}
@@ -174,7 +173,7 @@ retr( SNET *sn, char *pathdesc, char *path, char *temppath, mode_t tempmode,
 	}
     }
     if ( close( fd ) != 0 ) {
-	perror( path );
+      perror( (const char *) path );
 	returnval = -1;
 	goto error1;
     }
@@ -213,7 +212,7 @@ retr( SNET *sn, char *pathdesc, char *path, char *temppath, mode_t tempmode,
 error2:
     close( fd );
 error1:
-    unlink( temppath );
+    unlink( (char *) temppath );
     return( returnval );
 }
 
@@ -227,8 +226,9 @@ error1:
  */
 
     int
-retr_applefile( SNET *sn, char *pathdesc, char *path, char *temppath,
-    mode_t tempmode, off_t transize, char *trancksum )
+retr_applefile( SNET *sn, const filepath_t *pathdesc, const filepath_t *path,
+		filepath_t *temppath, mode_t tempmode, off_t transize,
+		const char *trancksum )
 {
     int				dfd, rfd;
     unsigned int		md_len;
@@ -320,7 +320,7 @@ retr_applefile( SNET *sn, char *pathdesc, char *path, char *temppath,
     }
 
     /* name temp file */
-    if ( snprintf( temppath, MAXPATHLEN, "%s.radmind.%i", path,
+    if ( snprintf( (char *) temppath, MAXPATHLEN, "%s.radmind.%i", path,
 	    getpid()) >= MAXPATHLEN ) {
 	fprintf( stderr, "%s.radmind.%i: too long", path, ( int )getpid());
 	return( -1 );
@@ -328,26 +328,32 @@ retr_applefile( SNET *sn, char *pathdesc, char *path, char *temppath,
 
     /* data fork must exist to write to rsrc fork */        
     /* Open here so messages from mkprefix don't verbose dots */
-    if (( dfd = open( temppath, O_CREAT | O_EXCL | O_WRONLY, tempmode )) < 0 ) {
+    if (( dfd = open( (char *) temppath, O_CREAT | O_EXCL | O_WRONLY, tempmode )) < 0 ) {
 	if ( create_prefix && errno == ENOENT ) {
 	    errno = 0;
 	    if ( mkprefix( temppath ) != 0 ) {
-		perror( temppath );
+	        perror( (char *) temppath );
 		return( -1 );
 	    }
-	    if (( dfd = open( temppath, O_CREAT | O_EXCL | O_WRONLY,
+	    if (( dfd = open( (char *) temppath, O_CREAT | O_EXCL | O_WRONLY,
 		    tempmode )) < 0 ) {
-		perror( temppath );
+	        perror( (char *) temppath );
 		return( -1 );
 	    }
 	} else {
-	    perror( temppath );
+	  perror( (char *) temppath );
 	    return( -1 );
 	}
     }
 
-    if ( verbose ) printf( "<<< " );
-    if ( dodots ) { putc( '.', stdout ); fflush( stdout ); }
+    if ( verbose )
+      printf( "<<< " );
+
+    if ( dodots ) {
+        putc( '.', stdout );
+	fflush( stdout );
+    }
+
     size -= rc;
     if ( showprogress ) {
 	progressupdate( rc, path );
@@ -417,7 +423,7 @@ retr_applefile( SNET *sn, char *pathdesc, char *path, char *temppath,
 
     if ( ae_ents[ AS_RFE ].ae_length > 0 ) {
 	/* make rsrc fork name */
-	if ( snprintf( rsrc_path, MAXPATHLEN, "%s%s", temppath,
+      if ( snprintf( rsrc_path, MAXPATHLEN, "%s%s", (char *) temppath,
 		_PATH_RSRCFORKSPEC ) >= MAXPATHLEN ) {
 	    fprintf( stderr, "%s%s: path too long\n", temppath,
 		_PATH_RSRCFORKSPEC );
@@ -476,7 +482,7 @@ retr_applefile( SNET *sn, char *pathdesc, char *path, char *temppath,
 	}
 
 	if ( write( dfd, buf, ( unsigned int )rc ) != rc ) {
-	    perror( temppath );
+	    perror( (char *) temppath );
 	    returnval = -1;
 	    goto error2;
 	}
@@ -491,14 +497,15 @@ retr_applefile( SNET *sn, char *pathdesc, char *path, char *temppath,
     }
 
     if ( close( dfd ) < 0 ) {
-	perror( temppath );
+        perror( (char *) temppath );
 	returnval = -1;
 	goto error1;
     }
-    if ( verbose ) printf( "\n" );
+    if ( verbose )
+      printf( "\n" );
 
     /* set finder info for newly decoded applefile */
-    if ( setattrlist( temppath, &setalist, finfo, FINFOLEN,
+    if ( setattrlist( (char *) temppath, &setalist, finfo, FINFOLEN,
 	    FSOPT_NOFOLLOW ) != 0 ) {
 	fprintf( stderr,
 	    "retrieve applefile %s failed: Could not set attributes\n",
@@ -541,15 +548,16 @@ error3:
 error2:
     close( dfd );
 error1:
-    unlink( temppath );
+    unlink( (char *) temppath );
     return( returnval );
 }
 
 #else /* !__APPLE__ */
 
     int
-retr_applefile( SNET *sn, char *pathdesc, char *path, char *temppath,
-    mode_t tempmode, off_t transize, char *trancksum )
+retr_applefile( SNET *sn, const filepath_t *pathdesc, const filepath_t *path, 
+		filepath_t *temppath, mode_t tempmode, off_t transize,
+		const char *trancksum )
 {
     errno = EINVAL;
     return( -1 );

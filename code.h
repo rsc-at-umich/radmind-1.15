@@ -3,5 +3,5 @@
  * All Rights Reserved.  See COPYRIGHT.
  */
 
-char *encode( char * );
-char *decode( char * );
+const char *encode( const char *line );
+const char *decode( const char *line );

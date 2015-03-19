@@ -1,14 +1,23 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2013 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
+#if !defined(_RADMIND_LLIST_H)
+#  define _RADMIND_LLIST_H "$Id$"
+
+#  include "filepath.h"
+
+typedef struct llist llist_t;
+
 struct llist {
-    char		ll_name[ MAXPATHLEN ];
-    struct llist	*ll_next;
+    filepath_t	ll_name[ MAXPATHLEN ];
+    llist_t	*ll_next;
 };
 
-struct llist * ll_allocate( char * );
-void ll_free( struct llist * );
-void ll_insert( struct llist **, struct llist * );
-void ll_insert_case( struct llist **, struct llist * );
+extern llist_t * ll_allocate( const filepath_t *name );
+extern void ll_free( llist_t * );
+extern void ll_insert( llist_t **, llist_t * );
+extern void ll_insert_case( llist_t **, llist_t * );
+
+#endif /* defined(_RADMIND_LLIST_H) */

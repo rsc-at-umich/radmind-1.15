@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2007 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2007, 2013 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -68,7 +68,7 @@ extern SSL_CTX  *ctx;
 #define K_SPECIAL 3
 #define K_FILE 4
 
-int 		read_kfile( SNET *sn, char *kfile );
+int 		read_kfile( SNET *sn, const unsigned char *kfile );
 
 int		f_quit( SNET *, int, char *[] );
 int		f_noop( SNET *, int, char *[] );
@@ -95,9 +95,9 @@ char		*password = NULL;
 char		*remote_host = NULL;
 char		*remote_addr = NULL;
 char		*remote_cn = NULL;
-char		special_dir[ MAXPATHLEN ];
-char		command_file[ MAXPATHLEN ];
-char		upload_xscript[ MAXPATHLEN ];
+unsigned char	special_dir[ MAXPATHLEN ];
+unsigned char	command_file[ MAXPATHLEN ];
+unsigned char	upload_xscript[ MAXPATHLEN ];
 const EVP_MD    *md = NULL;
 struct list	*access_list = NULL;
 int		ncommands = 0;
@@ -225,9 +225,9 @@ keyword( int ac, char *av[] )
 	    return( -1 );
 	}
 	if ( ac == 2 ) {
-	    if ( strlen( command_file + 5 ) > MAXPATHLEN )  {
+	  if ( strlen( (const char *) &(command_file[5]) ) > MAXPATHLEN )  {
 		syslog( LOG_WARNING, "[tmp]/%s longer than MAXPATHLEN",
-			command_file );
+			(char *) command_file );
 		return( -1 );
 	    }
 	}
@@ -308,15 +308,17 @@ f_retr( SNET *sn, int ac, char **av )
     struct stat		st;
     struct timeval	tv;
     char		buf[8192];
-    char		path[ MAXPATHLEN ];
-    char		*d_path, *d_tran;
+    unsigned char	path[ MAXPATHLEN ];
+    const unsigned char
+      *d_path = NULL,
+      *d_tran = NULL;
     int			fd;
 
     switch ( keyword( ac, av )) {
     case K_COMMAND:
 	if ( ac == 2 ) { 
 
-	    if ( snprintf( path, MAXPATHLEN, "command/%s", command_file )
+	  if ( snprintf( (char *) path, MAXPATHLEN, "command/%s", command_file )
 		    >= MAXPATHLEN ) {
 		syslog( LOG_ERR, "f_retr: command/%s: path too long",
 		    command_file );
@@ -324,7 +326,7 @@ f_retr( SNET *sn, int ac, char **av )
 		return( 1 );
 	    }
 	} else {
-	    if (( d_path = decode( av[ 2 ] )) == NULL ) {
+	  if (( d_path = (const unsigned char *) decode( av[ 2 ] )) == NULL ) {
 		syslog( LOG_ERR, "f_retr: decode: buffer too small" );
 		snet_writef( sn, "%d Line too long\r\n", 540 );
 		return( 1 );
@@ -333,12 +335,12 @@ f_retr( SNET *sn, int ac, char **av )
 	    /* Check for access */
 	    if ( !list_check( access_list, d_path )) {
 		syslog( LOG_WARNING | LOG_AUTH, "attempt to access: %s",
-		    d_path );
-		snet_writef( sn, "%d No access for %s\r\n", 540, d_path );
+			(const char *) d_path );
+		snet_writef( sn, "%d No access for %s\r\n", 540, (const char *) d_path );
 		return( 1 );
 	    }
 
-	    if ( snprintf( path, MAXPATHLEN, "command/%s", d_path )
+	    if ( snprintf( (char *) path, MAXPATHLEN, "command/%s", (const char *) d_path )
 		    >= MAXPATHLEN ) {
 		syslog( LOG_ERR, "f_retr: command path too long" );
 		snet_writef( sn, "%d Path too long\r\n", 540 );
@@ -348,7 +350,7 @@ f_retr( SNET *sn, int ac, char **av )
 	break;
 
     case K_TRANSCRIPT:
-	if (( d_tran = decode( av[ 2 ] )) == NULL ) {
+      if (( d_tran = (const unsigned char *) decode( av[ 2 ] )) == NULL ) {
 	    syslog( LOG_ERR, "f_retr: decode: buffer too small" );
 	    snet_writef( sn, "%d Line too long\r\n", 540 );
 	    return( 1 );
@@ -356,12 +358,12 @@ f_retr( SNET *sn, int ac, char **av )
 
 	/* Check for access */
 	if ( !list_check( access_list, d_tran )) {
-	    syslog( LOG_WARNING | LOG_AUTH, "attempt to access: %s", d_tran );
-	    snet_writef( sn, "%d No access for %s\r\n", 540, d_tran );
+	  syslog( LOG_WARNING | LOG_AUTH, "attempt to access: %s", (const char *) d_tran );
+	  snet_writef( sn, "%d No access for %s\r\n", 540, (const char *) d_tran );
 	    return( 1 );
 	}
 
-	if ( snprintf( path, MAXPATHLEN, "transcript/%s", d_tran )
+	if ( snprintf( (char *) path, MAXPATHLEN, "transcript/%s", (const char *) d_tran )
 		>= MAXPATHLEN ) {
 	    syslog( LOG_ERR, "f_retr: transcript path too long" );
 	    snet_writef( sn, "%d Path too long\r\n", 540 );
@@ -370,13 +372,13 @@ f_retr( SNET *sn, int ac, char **av )
 	break;
 
     case K_SPECIAL:
-	if (( d_path = decode( av[ 2 ] )) == NULL ) {
+      if (( d_path = (const unsigned char *) decode( av[ 2 ] )) == NULL ) {
 	    syslog( LOG_ERR, "f_retr: decode: buffer too small" );
 	    snet_writef( sn, "%d Line too long\r\n", 540 );
 	    return( 1 );
 	} 
 
-	if ( snprintf( path, MAXPATHLEN, "%s/%s", special_dir, d_path )
+      if ( snprintf( (char *) path, MAXPATHLEN, "%s/%s", special_dir, (const char *) d_path )
 		>= MAXPATHLEN ) {
 	    syslog( LOG_ERR, "f_retr: special path too long" );
 	    snet_writef( sn, "%d Path too long\r\n", 540 );
@@ -386,16 +388,16 @@ f_retr( SNET *sn, int ac, char **av )
 	break;
 
     case K_FILE:
-	if (( d_path = decode( av[ 3 ] )) == NULL ) {
+      if (( d_path = (const unsigned char *) decode( av[ 3 ] )) == NULL ) {
 	    syslog( LOG_ERR, "f_retr: decode: buffer too small" );
 	    snet_writef( sn, "%d Line too long\r\n", 540 );
 	    return( 1 );
 	} 
-	if (( d_path = strdup( d_path )) == NULL ) {
-	    syslog( LOG_ERR, "f_retr: strdup: %s: %m", d_path );
+	if (( d_path = (const unsigned char *) strdup( (const char *) d_path )) == NULL ) {
+	  syslog( LOG_ERR, "f_retr: strdup: %m");
 	    return( -1 );
 	}
-	if (( d_tran = decode( av[ 2 ] )) == NULL ) {
+	if (( d_tran = (const unsigned char *) decode( av[ 2 ] )) == NULL ) {
 	    syslog( LOG_ERR, "f_retr: decode: buffer too small" );
 	    snet_writef( sn, "%d Line too long\r\n", 540 );
 	    return( 1 );
@@ -403,19 +405,20 @@ f_retr( SNET *sn, int ac, char **av )
 
 	/* Check for access */
 	if ( !list_check( access_list, d_tran )) {
-	    syslog( LOG_WARNING | LOG_AUTH, "attempt to access: %s", d_tran );
-	    snet_writef( sn, "%d No access for %s:%s\r\n", 540, d_tran,
-		d_path );
+	  syslog( LOG_WARNING | LOG_AUTH, "attempt to access: %s", (const char *) d_tran );
+	  snet_writef( sn, "%d No access for %s:%s\r\n", 540, (const char *) d_tran,
+		       (const char *) d_path );
 	    return( 1 );
 	}
 
-	if ( snprintf( path, MAXPATHLEN, "file/%s/%s", d_tran, d_path )
+	if ( snprintf( (char *) path, MAXPATHLEN, "file/%s/%s", (const char *) d_tran,
+		       (const char *) d_path )
 		>= MAXPATHLEN ) {
 	    syslog( LOG_ERR, "f_retr: file path too long" );
 	    snet_writef( sn, "%d Path too long\r\n", 540 );
 	    return( 1 );
 	}
-	free( d_path );
+	free( (void *) d_path );
 	break;
 
     default:
@@ -423,9 +426,9 @@ f_retr( SNET *sn, int ac, char **av )
 	return( 1 );
     }
 
-    if (( fd = open( path, O_RDONLY, 0 )) < 0 ) {
-    	syslog( LOG_ERR, "open: %s: %m", path );
-	snet_writef( sn, "%d Unable to access %s.\r\n", 543, path );
+    if (( fd = open( (const char *) path, O_RDONLY, 0 )) < 0 ) {
+        syslog( LOG_ERR, "open: %s: %m", (const char *)  path );
+	snet_writef( sn, "%d Unable to access %s.\r\n", 543, (const char *) path );
 	return( 1 );
     }
     
@@ -433,7 +436,7 @@ f_retr( SNET *sn, int ac, char **av )
 
     if ( fstat( fd, &st ) < 0 ) { 
 	syslog( LOG_ERR, "f_retr: fstat: %m" );
-	snet_writef( sn, "%d Access Error: %s\r\n", 543, path );
+	snet_writef( sn, "%d Access Error: %s\r\n", 543, (const char *) path );
 	if ( close( fd ) < 0 ) {
 	    syslog( LOG_ERR, "close: %m" );
 	    return( -1 );
@@ -477,14 +480,14 @@ f_retr( SNET *sn, int ac, char **av )
 
 /* looks for special file info in transcripts */
     char **
-special_t( char *transcript, char *epath )
+special_t(const unsigned char *transcript, const unsigned char *epath )
 {
     FILE		*fs;
     int			ac, len;
     char		**av;
-    static char		line[ MAXPATHLEN ];
+    static char         line[ MAXPATHLEN ];
 
-    if (( fs = fopen( transcript, "r" )) == NULL ) {
+    if (( fs = fopen( (const char *) transcript, "r" )) == NULL ) {
 	return( NULL );
     }
 
@@ -502,9 +505,9 @@ special_t( char *transcript, char *epath )
 	    continue;
 	}
 
-	if ( strcmp( av[ 1 ], epath ) == 0 ) { 
+	if ( strcmp( (const char *) av[ 1 ], (const char *) epath ) == 0 ) { 
 	    (void)fclose( fs );
-	    return( av );
+	    return(av );
 	}
     }
 
@@ -516,24 +519,27 @@ special_t( char *transcript, char *epath )
 f_stat( SNET *sn, int ac, char *av[] )
 {
 
-    char 		path[ MAXPATHLEN ];
+    unsigned char 	path[ MAXPATHLEN ];
     char		cksum_b64[ SZ_BASE64_E( EVP_MAX_MD_SIZE ) ];
     struct stat		st;
     int			key;
-    char		*enc_file, *d_tran, *d_path;
+    const unsigned char
+      *enc_file = NULL,
+      *d_tran = NULL,
+      *d_path = NULL;
 
     switch ( key = keyword( ac, av )) {
     case K_COMMAND:
 	if ( ac == 2 ) { 
-	    if ( snprintf( path, MAXPATHLEN, "command/%s", command_file )
+	  if ( snprintf( (char *) path, MAXPATHLEN, "command/%s", (const char *) command_file )
 		    >= MAXPATHLEN ) {
 		syslog( LOG_ERR, "f_stat: command/%s: path too long",
-		    command_file );
+			command_file );
 		snet_writef( sn, "%d Path too long\r\n", 540 );
 		return( 1 );
 	    }
 	} else {
-	    if (( d_path = decode( av[ 2 ] )) == NULL ) {
+	  if (( d_path = (const unsigned char *) decode( av[ 2 ] )) == NULL ) {
 		syslog( LOG_ERR, "f_stat: decode: buffer too small" );
 		snet_writef( sn, "%d Line too long\r\n", 540 );
 		return( 1 );
@@ -542,12 +548,12 @@ f_stat( SNET *sn, int ac, char *av[] )
 	    /* Check for access */
 	    if ( !list_check( access_list, d_path )) {
 		syslog( LOG_WARNING | LOG_AUTH, "attempt to access: %s",
-		    d_path );
-		snet_writef( sn, "%d No access for %s\r\n", 540, d_path );
+			(const char *) d_path );
+		snet_writef( sn, "%d No access for %s\r\n", 540, (const char *) d_path );
 		return( 1 );
 	    }
 
-	    if ( snprintf( path, MAXPATHLEN, "command/%s", d_path )
+	    if ( snprintf( (char *) path, MAXPATHLEN, "command/%s", (const char *) d_path )
 		    >= MAXPATHLEN ) {
 		syslog( LOG_ERR, "f_stat: command path too long" );
 		snet_writef( sn, "%d Path too long\r\n", 540 );
@@ -557,7 +563,7 @@ f_stat( SNET *sn, int ac, char *av[] )
 	break;
 
     case K_TRANSCRIPT:
-	if (( d_tran = decode( av[ 2 ] )) == NULL ) {
+      if (( d_tran = (const unsigned char *) decode( av[ 2 ] )) == NULL ) {
 	    syslog( LOG_ERR, "f_stat: decode: buffer too small" );
 	    snet_writef( sn, "%d Line too long\r\n", 540 );
 	    return( 1 );
@@ -565,12 +571,12 @@ f_stat( SNET *sn, int ac, char *av[] )
 
 	/* Check for access */
 	if ( !list_check( access_list, d_tran )) {
-	    syslog( LOG_WARNING | LOG_AUTH, "attempt to access: %s", d_tran );
-	    snet_writef( sn, "%d No access for %s\r\n", 540, d_tran );
+	  syslog( LOG_WARNING | LOG_AUTH, "attempt to access: %s", (const char *) d_tran );
+	  snet_writef( sn, "%d No access for %s\r\n", 540, (const char *) d_tran );
 	    return( 1 );
 	}
 
-	if ( snprintf( path, MAXPATHLEN, "transcript/%s", d_tran )
+	if ( snprintf( (char *) path, MAXPATHLEN, "transcript/%s", (const char *) d_tran )
 		>= MAXPATHLEN ) {
 	    syslog( LOG_ERR, "f_stat: transcript path too long" );
 	    snet_writef( sn, "%d Path too long\r\n", 540 );
@@ -579,13 +585,14 @@ f_stat( SNET *sn, int ac, char *av[] )
 	break;
 
     case K_SPECIAL:
-	if (( d_path = decode( av[ 2 ] )) == NULL ) {
+      if (( d_path = (const unsigned char *) decode( av[ 2 ] )) == NULL ) {
 	    syslog( LOG_ERR, "f_stat: decode: buffer too small" );
 	    snet_writef( sn, "%d Line too long\r\n", 540 );
 	    return( 1 );
 	} 
 
-	if ( snprintf( path, MAXPATHLEN, "%s/%s", special_dir, d_path) 
+      if ( snprintf( (char *) path, MAXPATHLEN, "%s/%s", special_dir, 
+		     (const unsigned char *) d_path) 
 		>= MAXPATHLEN ) {
 	    syslog( LOG_ERR, "f_stat: special path too long" );
 	    snet_writef( sn, "%d Path too long\r\n", 540 );
@@ -598,11 +605,11 @@ f_stat( SNET *sn, int ac, char *av[] )
 	return( 1 );
     }
         
-    syslog( LOG_DEBUG, "f_stat: returning infomation for %s", path );
+    syslog( LOG_DEBUG, "f_stat: returning infomation for %s", (const char *) path );
 
-    if ( stat( path, &st ) < 0 ) {
+    if ( stat( (const char *) path, &st ) < 0 ) {
         syslog( LOG_ERR, "f_stat: stat: %m" );
-	snet_writef( sn, "%d Access Error: %s\r\n", 531, path );
+	snet_writef( sn, "%d Access Error: %s\r\n", 531, (const char *) path );
 	return( 1 );
     }
 
@@ -615,8 +622,8 @@ f_stat( SNET *sn, int ac, char *av[] )
 	exit( 1 );
     }
     if ( do_cksum( path, cksum_b64 ) < 0 ) {
-	syslog( LOG_ERR, "do_cksum: %s: %m", path );
-	snet_writef( sn, "%d Checksum Error: %s: %m\r\n", 500, path );
+        syslog( LOG_ERR, "do_cksum: (const char *) %s: %m", (const char *) path );
+	snet_writef( sn, "%d Checksum Error: %s: %m\r\n", 500, (const char *) path );
 	return( 1 );
     }
 
@@ -650,7 +657,7 @@ f_stat( SNET *sn, int ac, char *av[] )
 	 */
 
         /* look for transcript containing the information */
-	if ( ( strlen( path ) + 2 ) > MAXPATHLEN ) {
+      if ( ( strlen( (const char *) path ) + 2 ) > MAXPATHLEN ) {
 	    syslog( LOG_WARNING, 
 		"f_stat: transcript path longer than MAXPATHLEN" );
 
@@ -664,7 +671,7 @@ f_stat( SNET *sn, int ac, char *av[] )
 
 	/* if allowable, check for transcript in the special file directory */
 
-	strcat( path, ".T" );
+      strncat( (char *) path, ".T" , sizeof(path)-1);
 
 	/* store value of av[ 2 ], because argcargv will be called
 	 * from special_t(), and that will blow away the current values
@@ -674,28 +681,28 @@ f_stat( SNET *sn, int ac, char *av[] )
 	 * env_file...
 	 */
 
-	if (( enc_file = strdup( av[ 2 ] )) == NULL ) {
+      if (( enc_file = (const unsigned char *) strdup( av[ 2 ] )) == NULL ) {
 	    syslog( LOG_ERR, "f_stat: strdup: %s %m", av[ 2 ] );
 	    return( -1 );
 	}
 
 	if (( av = special_t( path, enc_file )) == NULL ) {
-	    if (( av = special_t( "transcript/special.T", enc_file ))
+	  if (( av = special_t( (const unsigned char *) "transcript/special.T", enc_file ))
 		    == NULL ) {
 		snet_writef( sn, "%s %s %o %d %d %d %" PRIofft "d %s\r\n",
-			"f", enc_file, 
+			     "f", (const char *) enc_file, 
 			DEFAULT_MODE, DEFAULT_UID, DEFAULT_GID, 
 			st.st_mtime, st.st_size, cksum_b64 );
-		free( enc_file );
+		free( (void *) enc_file );
 		return( 0 );
 	    }
 	}
 	snet_writef( sn, "%s %s %s %s %s %d %" PRIofft "d %s\r\n",
-		av[ 0 ], enc_file,
+		     av[ 0 ], (const char *) enc_file,
 		av[ 2 ], av[ 3 ], av[ 4 ],
 		st.st_mtime, st.st_size, cksum_b64 );
 
-	free( enc_file );
+	free( (void *) enc_file );
 	return( 0 );
 
     default:
@@ -707,11 +714,13 @@ f_stat( SNET *sn, int ac, char *av[] )
 f_stor( SNET *sn, int ac, char *av[] )
 {
     char 		*sizebuf;
-    char		xscriptdir[ MAXPATHLEN ];
-    char		upload[ MAXPATHLEN ];
+    unsigned char	xscriptdir[ MAXPATHLEN ];
+    unsigned char	upload[ MAXPATHLEN ];
     char		buf[ 8192 ];
     char		*line;
-    char		*d_tran, *d_path;
+    unsigned char
+      *d_tran = NULL,
+      *d_path = NULL;
     int			fd;
     int			zero = 0;
     off_t		len;
@@ -739,29 +748,37 @@ f_stor( SNET *sn, int ac, char *av[] )
 	exit( 1 );
     }
     /* decode() uses static mem, so strdup() */
-    if (( d_tran = decode( av[ 2 ] )) == NULL ) {
+    if (( d_tran = (unsigned char *) decode( av[ 2 ] )) == NULL ) {
 	syslog( LOG_ERR, "f_stor: decode: buffer too small" );
 	snet_writef( sn, "%d Line too long\r\n", 540 );
 	return( 1 );
     } 
-    if (( d_tran = strdup( d_tran )) == NULL ) {
-	syslog( LOG_ERR, "f_stor: strdup: %s: %m", d_tran );
+    if (( d_tran = (unsigned char *) strdup( (const char *) d_tran )) == NULL ) {
+	syslog( LOG_ERR, "f_stor: strdup: %m");
 	return( -1 );
     }
 
     switch ( keyword( ac, av )) {
 
     case K_TRANSCRIPT:
-        if ( snprintf( xscriptdir, MAXPATHLEN, "tmp/file/%s", d_tran )
+      if ( snprintf( (char *) xscriptdir, MAXPATHLEN, "tmp/file/%s", 
+		     (const char *) d_tran )
 		>= MAXPATHLEN ) {
 	    syslog( LOG_ERR, "f_stor: xscriptdir path too long" );
 	    snet_writef( sn, "%d Path too long\r\n", 540 );
+
+	    free( (void *) d_tran );
+
 	    return( 1 );
 	}
-        if ( snprintf( upload, MAXPATHLEN, "tmp/transcript/%s", d_tran )
+      if ( snprintf( (char *) upload, MAXPATHLEN, "tmp/transcript/%s",
+		     (const char *) d_tran )
 		>= MAXPATHLEN ) {
 	    syslog( LOG_ERR, "f_stor: upload path too long" );
 	    snet_writef( sn, "%d Path too long\r\n", 540 );
+
+	    free( (void *) d_tran );
+
 	    return( 1 );
 	}
 
@@ -771,18 +788,21 @@ f_stor( SNET *sn, int ac, char *av[] )
 	if ( strlen( av[ 2 ] ) >= MAXPATHLEN ) {
 	    syslog( LOG_ERR, "f_stor: upload_xscript path too long" );
 	    snet_writef( sn, "%d Path too long\r\n", 540 );
+
+	    free( (void *) d_tran );
+
 	    return( 1 );
 	}
-	strcpy( upload_xscript, av[ 2 ] );
+	strncpy( (char *) upload_xscript, av[ 2 ], sizeof(upload_xscript)-1);
 
 	/* make the directory for the files of this xscript to live in. */
-	if ( mkdir( xscriptdir, 0777 ) < 0 ) {
+	if ( mkdir( (const char *) xscriptdir, 0777 ) < 0 ) {
 	    if ( errno == EEXIST ) {
 	        snet_writef( sn, "%d Transcript exists\r\n", 551 );
 		exit( 1 );
 	    }
 	    snet_writef( sn, "%d %s: %s\r\n",
-		    551, xscriptdir, strerror( errno ));
+			 551, (const char *) xscriptdir, strerror( errno ));
 	    exit( 1 );
 	}
 	break;
@@ -791,39 +811,57 @@ f_stor( SNET *sn, int ac, char *av[] )
 	/* client must have provided a transcript name before giving 
 	 * files in that transcript
 	 */
-	if (( strcmp( upload_xscript, av[ 2 ] ) != 0 )) {
+      if (( strcmp( (const char *) upload_xscript, av[ 2 ] ) != 0 )) {
 	    snet_writef( sn, "%d Incorrect Transcript %s\r\n", 552, av[ 2 ] );
 	    exit( 1 );
 	}
 
 	/* decode() uses static mem, so strdup() */
-	if (( d_path = decode( av[ 3 ] )) == NULL ) {
+      if (( d_path = (unsigned char *) decode( av[ 3 ] )) == NULL ) {
 	    syslog( LOG_ERR, "f_stor: decode: buffer too small" );
 	    snet_writef( sn, "%d Line too long\r\n", 540 );
+
+	    free( (void *) d_tran );
+
 	    return( 1 );
 	} 
-	if (( d_path = strdup( d_path )) == NULL ) {
-	    syslog( LOG_ERR, "f_stor: strdup: %s: %m", d_path );
+
+
+	if (( d_path = (unsigned char *) strdup( (const char *) d_path )) == NULL ) {
+	    syslog( LOG_ERR, "f_stor: strdup: %m" );
+
+	    free( (void *) d_tran );
+
 	    return( -1 );
 	}
 
 	if ( d_path[ 0 ] == '/' ) {
-	    if ( snprintf( upload, MAXPATHLEN, "tmp/file/%s%s", d_tran,
-		    d_path ) >= MAXPATHLEN ) {
+	  if ( snprintf( (char *) upload, MAXPATHLEN, "tmp/file/%s%s",
+			 (const char *) d_tran,
+			 (const char *) d_path ) >= MAXPATHLEN ) {
 		syslog( LOG_ERR, "f_stor: upload path too long" );
 		snet_writef( sn, "%d Path too long\r\n", 540 );
+
+		free( (void *) d_path );
+		free( (void *) d_tran );
+
 		return( 1 );
 	    }
 	} else {
-	    if ( snprintf( upload, MAXPATHLEN, "tmp/file/%s/%s", d_tran,
-		    d_path ) >= MAXPATHLEN ) {
+	  if ( snprintf( (char *) upload, MAXPATHLEN, "tmp/file/%s/%s", 
+			 (const char *) d_tran,
+			 (const char *) d_path ) >= MAXPATHLEN ) {
 		syslog( LOG_ERR, "f_stor: upload path too long" );
 		snet_writef( sn, "%d Path too long\r\n", 540 );
+
+		free( (void *) d_path );
+		free( (void *) d_tran );
+
 		return( 1 );
 	    }
 	}
-	free( d_path );
-	free( d_tran );
+	free( (void *) d_path );
+	free( (void *) d_tran );
 	break;
 
     default:
@@ -831,15 +869,17 @@ f_stor( SNET *sn, int ac, char *av[] )
 	exit( 1 ); 
     }
 
-    if (( fd = open( upload, O_CREAT|O_EXCL|O_WRONLY, 0666 )) < 0 ) {
-	if ( mkdirs( upload ) < 0 ) {
-	    syslog( LOG_ERR, "f_stor: mkdir: %s: %m", upload );
-	    snet_writef( sn, "%d %s: %s\r\n", 555, upload, strerror( errno ));
+    if (( fd = open( (const char *) upload, O_CREAT|O_EXCL|O_WRONLY, 0666 )) < 0 ) {
+      if ( mkdirs( upload ) < 0 ) {
+	syslog( LOG_ERR, "f_stor: mkdir: %s: %m", (const char *) upload );
+	snet_writef( sn, "%d %s: %s\r\n", 555, (const char *) upload, strerror( errno ));
 	    exit( 1 );
-	}
-	if (( fd = open( upload, O_CREAT|O_EXCL|O_WRONLY, 0666 )) < 0 ) {
+      }
+
+
+      if (( fd = open( (const char *) upload, O_CREAT|O_EXCL|O_WRONLY, 0666 )) < 0 ) {
 	    syslog( LOG_ERR, "f_stor: open: %s: %m", upload );
-	    snet_writef( sn, "%d %s: %s\r\n", 555, upload, strerror( errno ));
+	    snet_writef( sn, "%d %s: %s\r\n", 555, (const char *) upload, strerror( errno ));
 	    exit( 1 );
 	}
     }
@@ -870,23 +910,24 @@ f_stor( SNET *sn, int ac, char *av[] )
 	}
 
 	if ( write( fd, buf, rc ) != rc ) {
-	    snet_writef( sn, "%d %s: %s\r\n", 555, upload, strerror( errno ));
+	  snet_writef( sn, "%d %s: %s\r\n", 555, (const char *) upload, 
+		       strerror( errno ));
 	    exit( 1 );
 	}
     }
 
     if ( len != 0 ) {
 	syslog( LOG_ERR, "f_stor: len is %" PRIofft "d", len );
-	snet_writef( sn, "%d %s: internal error!\r\n", 555, upload );
+	snet_writef( sn, "%d %s: internal error!\r\n", 555, (const char *) upload );
 	exit( 1 );
     }
 
     if ( close( fd ) < 0 ) {
-	snet_writef( sn, "%d %s: %s\r\n", 555, upload, strerror( errno ));
+      snet_writef( sn, "%d %s: %s\r\n", 555, (const char *) upload, strerror( errno ));
 	exit( 1 );
     }
 
-    syslog( LOG_DEBUG, "f_stor: file %s stored", upload );
+    syslog( LOG_DEBUG, "f_stor: file %s stored", (const char *) upload );
 
     tv.tv_sec = 60;
     tv.tv_usec = 0;
@@ -899,8 +940,8 @@ f_stor( SNET *sn, int ac, char *av[] )
     if ( strcmp( line, "." ) != 0 ) {
         syslog( LOG_ERR, "f_stor: line is: %s", line );
 	snet_writef( sn, "%d Length doesn't match sent data %s\r\n",
-		555, upload );
-	(void)unlink( upload );
+		     555, (const char *) upload );
+	(void)unlink( (const char *) upload );
 	exit( 1 );
     }
 
@@ -911,8 +952,8 @@ f_stor( SNET *sn, int ac, char *av[] )
     int
 f_repo( SNET *sn, int ac, char **av )
 {
-    char			*cn = "-";
-    char			*d_msg;
+    const char			*cn = "-";
+    const char			*d_msg;
 
     if ( ac != 3 ) {
 	snet_writef( sn, "%d Syntax error (invalid parameters)\r\n", 501 );
@@ -996,7 +1037,7 @@ f_starttls( SNET *sn, int ac, char **av )
     }
 
     /* get command file */
-    if ( command_k( "config", 0 ) < 0 ) {
+    if ( command_k( (unsigned char *) "config", 0 ) < 0 ) {
 	/* Client not in config */
 	commands  = noauth;
 	ncommands = sizeof( noauth ) / sizeof( noauth[ 0 ] );
@@ -1214,13 +1255,13 @@ f_compress( SNET *sn, int ac, char **av )
 
 
     static char *
-match_config_entry( char *entry )
+match_config_entry( const unsigned char *entry )
 {
-    if (( remote_cn != NULL ) && wildcard( entry, remote_cn, 0 )) {
+  if (( remote_cn != NULL ) && wildcard( entry, (unsigned char *) remote_cn, 0 )) {
 	return( remote_cn );
-    } else if ( wildcard( entry, remote_host, 0 )) {
+    } else if ( wildcard( entry, (unsigned char *) remote_host, 0 )) {
 	return( remote_host );
-    } else if ( wildcard( entry, remote_addr, 1 )) {
+  } else if ( wildcard( entry, (unsigned char *) remote_addr, 1 )) {
 	return( remote_addr );
     }
 
@@ -1229,18 +1270,18 @@ match_config_entry( char *entry )
 
 /* sets command file for connected host */
     int
-command_k( char *path_config, int depth )
+command_k( const unsigned char *path_config, int depth )
 {
     SNET	*sn;
     char	**av, *line, *p;
     char	*valid_host;
-    char	temp[ MAXPATHLEN ];
+    unsigned char temp[ MAXPATHLEN ];
     int		ac;
     int		rc = -1;
     int		linenum = 0;
 
-    if (( sn = snet_open( path_config, O_RDONLY, 0, 0 )) == NULL ) {
-        syslog( LOG_ERR, "command_k: snet_open: %s: %m", path_config );
+    if (( sn = snet_open( (const char *) path_config, O_RDONLY, 0, 0 )) == NULL ) {
+      syslog( LOG_ERR, "command_k: snet_open: %s: %m", (const char *) path_config );
 	return( -1 );
     }
 
@@ -1257,27 +1298,27 @@ command_k( char *path_config, int depth )
 	}
 	if ( ac < 2 ) {
 	    syslog( LOG_ERR, "%s: line %d: invalid number of arguments",
-			path_config, linenum );
+		    (const char *) path_config, linenum );
 	    continue;
 	}
 	if ( strcmp( av[ 0 ], "@include" ) == 0 ) {
 	    depth++;
 	    if ( depth > RADMIND_MAX_INCLUDE_DEPTH ) {
 		syslog( LOG_ERR, "%s: line %d: include %s exceeds max depth",
-			path_config, linenum, av[ 1 ] );
+			(const char *) path_config, linenum, av[ 1 ] );
 		goto command_k_done;
 	    }
 	    if ( ac > 3 ) {
 		syslog( LOG_ERR, "%s: line %d: invalid number of arguments",
-			path_config, linenum );
+			(const char *) path_config, linenum );
 		continue;
 	    } else if ( ac == 3 ) {
-		if ( match_config_entry( av[ 2 ] ) == NULL ) {
+	      if ( match_config_entry( (unsigned char *) av[ 2 ] ) == NULL ) {
 		    /* connecting host doesn't match pattern, skip include. */
 		    continue;
 		}
 	    }
-	    if ( command_k( av[ 1 ], depth ) != 0 ) {
+	    if ( command_k( (unsigned char *) av[ 1 ], depth ) != 0 ) {
 		continue;
 	    }
 
@@ -1287,15 +1328,15 @@ command_k( char *path_config, int depth )
 
         if (( ac > 2 ) && ( *av[ 2 ] != '#' )) { 
 	    syslog( LOG_ERR, "%s: line %d: invalid number of arguments",
-		    path_config, linenum );
+		    (const char *) path_config, linenum );
 	    continue;
 	}
 
 	if (( p = strrchr( av[ 1 ], '/' )) == NULL ) {
-	    sprintf( special_dir, "special" );
+	  sprintf( (char *) special_dir, "special" );
 	} else {
 	    *p = '\0';
-	    if ( snprintf( special_dir, MAXPATHLEN, "special/%s", av[ 1 ] )
+	    if ( snprintf( (char *) special_dir, MAXPATHLEN, "special/%s", av[ 1 ] )
 		    >= MAXPATHLEN ) {
 		syslog( LOG_ERR, "config file: line %d: path too long\n",
 		    linenum );
@@ -1304,20 +1345,21 @@ command_k( char *path_config, int depth )
 	    *p = '/';
 	}
 
-	if (( valid_host = match_config_entry( av[ 0 ] )) != NULL ) {
+	if (( valid_host = match_config_entry( (unsigned char *) av[ 0 ] )) != NULL ) {
 	    if ( strlen( av[ 1 ] ) >= MAXPATHLEN ) {
 		syslog( LOG_ERR,
 		    "config file: line %d: command file too long\n", linenum );
 		continue;
 	    }
-	    strcpy( command_file, av[ 1 ] );
-	    if ( snprintf( temp, MAXPATHLEN, "%s/%s", special_dir,
-		    valid_host ) >= MAXPATHLEN ) {
+	    strncpy( (char *) command_file, av[ 1 ], sizeof(command_file)-1 );
+	    if ( snprintf( (char *) temp, MAXPATHLEN, "%s/%s",
+			   (const char *) special_dir, valid_host )
+		 	>= MAXPATHLEN ) {
 		syslog( LOG_ERR, "config file: line %d: special dir too long\n",
 		    linenum );
 		continue;
 	    }
-	    strcpy( special_dir, temp );
+	    strncpy((char *) special_dir, (const char *) temp , sizeof(special_dir)-1);
 	    rc = 0;
 	    goto command_k_done;
 	}
@@ -1333,17 +1375,17 @@ command_k_done:
 }
 
     int
-read_kfile( SNET *sn, char *kfile )
+read_kfile( SNET *sn, const unsigned char *kfile )
 {
     int		ac;
     int		linenum = 0;
     char	**av;
     char        line[ MAXPATHLEN ];
-    char	path[ MAXPATHLEN ];
+    unsigned char path[ MAXPATHLEN ];
     ACAV	*acav;
     FILE	*f;
 
-    if ( snprintf( path, MAXPATHLEN, "command/%s", kfile ) >= MAXPATHLEN ) {
+    if ( snprintf( (char *) path, MAXPATHLEN, "command/%s", kfile ) >= MAXPATHLEN ) {
 	syslog( LOG_ERR, "read_kfile: command/%s: path too long", kfile );
 	snet_writef( sn,
 	    "%d Service not available, closing transmission channel\r\n", 421 );
@@ -1357,8 +1399,8 @@ read_kfile( SNET *sn, char *kfile )
 	return( -1 );
     }
 
-    if (( f = fopen( path, "r" )) == NULL ) {
-	syslog( LOG_ERR, "fopen: %s: %m", path );
+    if (( f = fopen( (const char *) path, "r" )) == NULL ) {
+      syslog( LOG_ERR, "fopen: %s: %m", (const char *) path );
 	snet_writef( sn,
 	    "%d Service not available, closing transmission channel\r\n", 421 );
 	return( -1 );
@@ -1386,7 +1428,7 @@ read_kfile( SNET *sn, char *kfile )
 
 	if ( ac != 2 ) {
 	    syslog( LOG_ERR, "%s: line %d: invalid number of arguments",
-		kfile, linenum );
+		    (const char *) kfile, linenum );
 	    snet_writef( sn,
 		"%d Service not available, closing transmission channel\r\n",
 		421 );
@@ -1395,14 +1437,14 @@ read_kfile( SNET *sn, char *kfile )
 
 	switch( *av[ 0 ] ) {
 	case 'k':
-	    if ( !list_check( access_list, av[ 1 ] )) {
-		if ( list_insert( access_list, av[ 1 ] ) != 0 ) {
+	  if ( !list_check( access_list, (const unsigned char *) av[ 1 ] )) {
+	    if ( list_insert( access_list, (unsigned char *) av[ 1 ] ) != 0 ) {
 		    syslog( LOG_ERR, "list_insert: %m" );
 		    snet_writef( sn,
 	"%d Service not available, closing transmission channel\r\n", 421 );
 		    goto error;
 		}
-		if ( read_kfile( sn, av[ 1 ] ) != 0 ) {
+	    if ( read_kfile( sn, (const unsigned char *) av[ 1 ] ) != 0 ) {
 		    goto error;
 		}
 	    }
@@ -1410,8 +1452,8 @@ read_kfile( SNET *sn, char *kfile )
 
 	case 'p':
 	case 'n':
-	    if ( !list_check( access_list, av[ 1 ] )) {
-		if ( list_insert( access_list, av[ 1 ] ) != 0 ) {
+	  if ( !list_check( access_list, (unsigned char *) av[ 1 ] )) {
+	    if ( list_insert( access_list, (const unsigned char *) av[ 1 ] ) != 0 ) {
 		    syslog( LOG_ERR, "list_insert: %m" );
 		    snet_writef( sn,
 	"%d Service not available, closing transmission channel\r\n", 421 );
@@ -1532,7 +1574,7 @@ cmdloop( int fd, struct sockaddr_in *sin )
     
     if ( authlevel == 0 ) {
 	/* lookup proper command file based on the hostname, IP or CN */
-	if ( command_k( "config", 0 ) < 0 ) {
+      if ( command_k( (unsigned char *) "config", 0 ) < 0 ) {
 	    syslog( LOG_INFO, "%s: Access denied: Not in config file",
 		remote_host );
 	    snet_writef( sn, "%d No access for %s\r\n", 500, remote_host );

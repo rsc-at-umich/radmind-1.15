@@ -28,8 +28,6 @@
 #include "progress.h"
 #include "root.h"
 
-void            (*logger)( char * ) = NULL;
-
 int		cksum = 0;
 int		verbose = 1;
 int		amode = R_OK | W_OK;
@@ -38,12 +36,16 @@ int		checkall = 0;
 int		checkapplefile = 0;
 int		updatetran = 1;
 char		*prefix = NULL;
-char		*radmind_path = _RADMIND_PATH;
+filepath_t	*radmind_path = (filepath_t *) _RADMIND_PATH;
 const EVP_MD	*md;
-extern int	showprogress, progress;
 extern off_t	lsize, total;
 extern char	*version, *checksumlist;
-char            prepath[ MAXPATHLEN ] = {0};
+filepath_t       prepath[ MAXPATHLEN ] = {0};
+
+
+static void cleanup( int clean, const char *path);
+static int do_lcksum( const filepath_t *tpath);
+static off_t check_applefile( const filepath_t *applefile, int afd );
 
 /*
  * exit codes:
@@ -52,8 +54,8 @@ char            prepath[ MAXPATHLEN ] = {0};
  *	2	System error
  */
 
-    off_t
-ckapplefile( char *applefile, int afd )
+    static off_t
+check_applefile(const filepath_t *applefile, int afd )
 {
     extern struct as_header as_header;
     struct as_header	header;
@@ -128,7 +130,7 @@ invalid_applefile:
 }
 
     static void
-cleanup( int clean, char *path )
+cleanup( int clean, const char *path )
 {
     if ( ! clean || path == NULL ) {
 	return;
@@ -141,7 +143,7 @@ cleanup( int clean, char *path )
 }
 
     static int
-do_lcksum( char *tpath )
+do_lcksum(const filepath_t *tpath )
 {
     int			fd, ufd, updateline = 0;
     int			ucount = 0, len, tac = 0;
@@ -151,45 +153,47 @@ do_lcksum( char *tpath )
     int			exitval = 0;
     ssize_t		bytes = 0;
     char		*line = NULL;
-    char		*d_path = NULL;
+    const char		*d_path = NULL;
     char                **targv;
-    char		cwd[ MAXPATHLEN ];
-    char		temp[ MAXPATHLEN ];
-    char		file_root[ MAXPATHLEN ];
-    char		tran_root[ MAXPATHLEN ];
-    char		tran_name[ MAXPATHLEN ];
+    filepath_t		cwd[ MAXPATHLEN ];
+    filepath_t		temp[ MAXPATHLEN ];
+    filepath_t		file_root[ MAXPATHLEN ];
+    filepath_t		tran_root[ MAXPATHLEN ];
+    filepath_t		tran_name[ MAXPATHLEN ];
     char                tline[ 2 * MAXPATHLEN ];
-    char		path[ 2 * MAXPATHLEN ];
+    filepath_t		path[ 2 * MAXPATHLEN ];
     char		upath[ 2 * MAXPATHLEN ] = { 0 };
     char		lcksum[ SZ_BASE64_E( EVP_MAX_MD_SIZE ) ];
     FILE		*f, *ufs = NULL;
     struct stat		st;
     off_t		cksumsize;
 
-    if ( getcwd( cwd, MAXPATHLEN ) == NULL ) {
+    if ( getcwd( (char *) cwd, sizeof(cwd)-1 ) == NULL ) {
 	perror( "getcwd" );
 	exit( 2 );
     }
+    cwd[sizeof(cwd)-1] = '\0'; /* Safety */
 
     if ( *tpath == '/' ) {
-	if ( strlen( tpath ) >= MAXPATHLEN ) {
+	if ( filepath_len( tpath ) >= MAXPATHLEN ) {
 	    fprintf( stderr, "%s: path too long\n", tpath );
 	    exit( 2 );
 	}
-	strcpy( cwd, tpath );
+	filepath_ncpy( cwd, tpath, sizeof(cwd) );
     } else {
-	if ( snprintf( temp, MAXPATHLEN, "%s/%s", cwd, tpath ) >= MAXPATHLEN ) {
+      if ( snprintf( (char *) temp, MAXPATHLEN, "%s/%s", 
+		     (char *) cwd, (char *) tpath ) >= MAXPATHLEN ) {
 	    fprintf( stderr, "%s/%s: path too long\n", cwd, tpath );
 	    exit( 2 );
 	}
-	strcpy( cwd, temp );
+        filepath_ncpy( cwd, temp, sizeof(cwd) );
     }
     if ( get_root( radmind_path, cwd, file_root, tran_root, tran_name ) != 0 ) {
 	exit( 2 );
     }
 
-    if ( stat( tpath, &st ) != 0 ) {
-	perror( tpath );
+    if ( stat( (char *) tpath, &st ) != 0 ) {
+	perror( (char *) tpath );
 	exit( 2 );
     }
     if ( !S_ISREG( st.st_mode )) {
@@ -197,25 +201,25 @@ do_lcksum( char *tpath )
 	exit( 2 );
     }
 
-    if ( access( tpath, amode ) != 0 ) {
-	perror( tpath );
+    if ( access( (char *) tpath, amode ) != 0 ) {
+	perror( (char *) tpath );
 	exit( 2 );
     }
 
-    if (( f = fopen( tpath, "r" )) == NULL ) {
-	perror( tpath );
+    if (( f = fopen( (char *) tpath, "r" )) == NULL ) {
+	perror( (char *) tpath );
 	exit( 2 );
     }
 
     if ( updatetran ) {
 	memset( upath, 0, MAXPATHLEN );
-	if ( snprintf( upath, MAXPATHLEN, "%s.%i", tpath, (int)getpid() )
+	if ( snprintf( upath, MAXPATHLEN, "%s.%i", (char *) tpath, (int)getpid() )
 		>= MAXPATHLEN ) {
 	    fprintf( stderr, "%s.%i: path too long\n", tpath, (int)getpid() );
 	}
 
-	if ( stat( tpath, &st ) != 0 ) {
-	    perror( tpath );
+	if ( stat( (char *) tpath, &st ) != 0 ) {
+	    perror( (char *) tpath );
 	    exit( 2 );
 	}
 
@@ -295,7 +299,7 @@ do_lcksum( char *tpath )
 	    fprintf( stderr, "line %d: path too long\n", linenum );
 	    goto badline;
 	}
-	strcpy( path, d_path );
+	filepath_ncpy( path, (filepath_t *) d_path, sizeof(path)-1 );
 	    
 	/* check to see if file against prefix */
 	if ( prefix != NULL ) {
@@ -309,7 +313,7 @@ do_lcksum( char *tpath )
 	    prefixfound = 1;
 	}
 	if ( showprogress && ( tac > 0 && *line != '#' )) {
-	    progressupdate( bytes, d_path );
+	  progressupdate( bytes, (filepath_t *) d_path );
 	}
 	bytes = 0;
 
@@ -322,11 +326,11 @@ do_lcksum( char *tpath )
 	    }
 	}
 
-	if ( strlen( path ) >= MAXPATHLEN ) {
+	if ( filepath_len( path ) >= MAXPATHLEN ) {
 	    fprintf( stderr, "line %d: path too long\n", linenum );
 	    goto badline;
 	}
-	strcpy( prepath, path );
+	filepath_ncpy( prepath, path, sizeof(prepath)-1 );
 
 	if ((( *targv[ 0 ] != 'f' )  && ( *targv[ 0 ] != 'a' )) || ( remove )) {
 	    if ( updatetran ) {
@@ -342,7 +346,8 @@ do_lcksum( char *tpath )
 	    goto badline;
 	}
 
-	if ( snprintf( path, MAXPATHLEN, "%s/%s/%s", file_root, tran_name,
+	if ( snprintf( (char *) path, MAXPATHLEN, "%s/%s/%s",
+	        (char *) file_root, (char *) tran_name,
 		d_path ) >= MAXPATHLEN ) {
 	    fprintf( stderr, "%d: %s/%s/%s: path too long\n", linenum,
 		file_root, tran_name, d_path );
@@ -361,7 +366,7 @@ do_lcksum( char *tpath )
 	 */
 
 	/* open file here to save us some other open calls */
-	if (( fd = open( path, O_RDONLY, 0 )) < 0 ) {
+	if (( fd = open( (char *) path, O_RDONLY, 0 )) < 0 ) {
 	    fprintf( stderr, "line %d: open %s: %s\n",
 			linenum, d_path, strerror( errno ));
 	    goto badline;
@@ -415,7 +420,7 @@ do_lcksum( char *tpath )
 			path, strerror( errno ));
 		goto badline;
 	    }
-	    if ( ckapplefile( path, fd ) != st.st_size ) {
+	    if ( check_applefile( path, fd ) != st.st_size ) {
 		fprintf( stderr, "%s: corrupted applefile\n", path );
 		goto badline;
 	    }
@@ -458,7 +463,7 @@ done:
 	free( line );
     }
     if ( showprogress ) {
-	progressupdate( bytes, "" );
+        progressupdate( bytes, (filepath_t *) "" );
     }
 
     if ( !prefixfound && prefix != NULL ) {
@@ -467,7 +472,7 @@ done:
 
     if ( updatetran ) {
 	if ( ucount ) {
-	    if ( rename( upath, tpath ) != 0 ) {
+	    if ( rename( upath, (char *) tpath ) != 0 ) {
 		fprintf( stderr, "rename %s to %s failed: %s\n", upath, tpath,
 		    strerror( errno ));
 		exit( 2 );
@@ -509,7 +514,7 @@ main( int argc, char **argv )
 {
     int			c, i, err = 0;
     extern int          optind;
-    char		*tpath = NULL;
+    filepath_t		*tpath = NULL;
 
     while (( c = getopt( argc, argv, "%Aac:D:iInP:qV" )) != EOF ) {
 	switch( c ) {
@@ -544,7 +549,7 @@ main( int argc, char **argv )
 	    break;
 
 	case 'D':
-	    radmind_path = optarg;
+	  radmind_path = (filepath_t *) optarg;
 	    break;
 
 	case 'P':
@@ -593,7 +598,7 @@ main( int argc, char **argv )
     }
 
     for ( i = optind; i < argc; i++ ) {
-	tpath = argv[ i ];
+      tpath = (filepath_t *) argv[ i ];
 
 	switch ( do_lcksum( tpath )) {
 	case 2:

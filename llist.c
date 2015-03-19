@@ -15,44 +15,45 @@
 #include "llist.h"
 
 /* Allocate a new list node */
-    struct llist *
-ll_allocate( char *name ) 
+    llist_t *
+ll_allocate( const filepath_t *name ) 
 {
-    struct llist	*new;
+    llist_t	*new;
 
     /* allocate space for next item in list */
-    if (( new = (struct llist *)malloc( sizeof( struct llist ))) == NULL ) {
+    if (( new = (llist_t *)malloc( sizeof( llist_t ))) == NULL ) {
 	perror( "malloc" );
 	exit( 2 );
     } 
 
     /* copy info into new item */
-    strcpy( new->ll_name, name );
-    new->ll_next = NULL;
+    strncpy( (char *) new->ll_name, (char *)name, sizeof(new->ll_name)-1 );
+    new->ll_name[sizeof(new->ll_name)-1] = '\0';
+    new->ll_next = (llist_t *) NULL;
 
     return new;
 }
 
 /* Free the whole list */
     void
-ll_free( struct llist *head )
+ll_free( llist_t *head )
 {
-    struct llist	*next;
+    llist_t	*next;
     
-    for ( ; head != NULL; head = next ) {
+    for ( ; head != (llist_t *) NULL; head = next ) {
 	next = head->ll_next;
 	free( head );
     }
 }
 
     void 
-ll_insert( struct llist **headp, struct llist *new ) 
+ll_insert( llist_t **headp, llist_t *new ) 
 { 
-    struct llist	**current;
+    llist_t	**current;
 
     /* find where in the list to put the new entry */
-    for ( current = headp; *current != NULL; current = &(*current)->ll_next) {
-	if ( strcmp( new->ll_name, (*current)->ll_name ) <= 0 ) {
+    for ( current = headp; *current != (llist_t *) NULL; current = &(*current)->ll_next) {
+      if ( strcmp( (char *) new->ll_name, (char *) ((*current)->ll_name )) <= 0 ) {
 	    break;
 	}
     }
@@ -64,13 +65,13 @@ ll_insert( struct llist **headp, struct llist *new )
 
 /* Insert a new node into the list */
     void 
-ll_insert_case( struct llist **headp, struct llist *new ) 
+ll_insert_case( llist_t **headp, llist_t *new ) 
 { 
-    struct llist	**current;
+    llist_t	**current;
 
     /* find where in the list to put the new entry */
-    for ( current = headp; *current != NULL; current = &(*current)->ll_next) {
-	if ( strcasecmp( new->ll_name, (*current)->ll_name ) <= 0 ) {
+    for ( current = headp; *current != (llist_t *) NULL; current = &(*current)->ll_next) {
+      if ( strcasecmp( (char *) new->ll_name, (char *) ((*current)->ll_name )) <= 0 ) {
 	    break;
 	}
     }

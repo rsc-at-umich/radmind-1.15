@@ -33,7 +33,6 @@
 
 extern int quiet;
 extern int linenum;
-extern int showprogress;
 extern int create_prefix;
 
 /*
@@ -46,8 +45,9 @@ extern int	lchmod( const char *, mode_t ) __attribute__(( weak ));
 #endif /* HAVE_LCHMOD */
 
     int
-update( char *path, char *displaypath, int present, int newfile,
-    struct stat *st, int tac, char **targv, struct applefileinfo *afinfo )
+update( const filepath_t *path, const filepath_t *displaypath, int present,
+	int newfile, struct stat *st, int tac, char **targv,
+	struct applefileinfo *afinfo )
 {
     int			timeupdated = 0;
     mode_t              mode;
@@ -56,7 +56,7 @@ update( char *path, char *displaypath, int present, int newfile,
     gid_t               gid;
     dev_t               dev;
     char		type;
-    char		*d_target;
+    const char		*d_target;
 #ifdef __APPLE__
     char			fi_data[ FINFOLEN ];
     extern struct attrlist	setalist;
@@ -76,8 +76,8 @@ update( char *path, char *displaypath, int present, int newfile,
 	times.modtime = atoi( targv[ 5 ] );
 	if ( times.modtime != st->st_mtime ) {
 	    times.actime = st->st_atime;
-	    if ( utime( path, &times ) != 0 ) {
-		perror( path );
+	    if ( utime( (const char *) path, &times ) != 0 ) {
+	        perror( (const char *) path );
 		return( 1 );
 	    }
 	    timeupdated = 1;
@@ -98,25 +98,25 @@ update( char *path, char *displaypath, int present, int newfile,
 	mode = strtol( targv[ 2 ], (char **)NULL, 8 );
 
 	if ( !present ) {
-	    if ( mkdir( path, mode ) != 0 ) {
+	    if ( mkdir( (const char *) path, mode ) != 0 ) {
 		if ( create_prefix && errno == ENOENT ) {
 		    errno = 0;
 		    if ( mkprefix( path ) != 0 ) {
-			perror( path );
+		        perror( (const char *) path );
 			return( 1 );
 		    }
-		    if ( mkdir( path, mode ) != 0 ) {
-			perror( path );
+		    if ( mkdir( (const char *) path, mode ) != 0 ) {
+		        perror( (const char *) path );
 			return( 1 );
 		    }
 		} else {
-		    perror( path );
+		    perror( (const char *) path );
 		    return( 1 );
 		}
 	    }
 	    newfile = 1;
-	    if ( radstat( (char*)path, st, &type, afinfo ) < 0 ) {
-		perror( path );
+	    if ( radstat( path, st, &type, afinfo ) < 0 ) {
+	        perror( (const char *) path );
 		return( 1 );
 	    }
 	    present = 1;
@@ -151,19 +151,19 @@ update( char *path, char *displaypath, int present, int newfile,
 	    fprintf( stderr, "line %d: target path too long\n", linenum );
 	    return( 1 );
 	} 
-	if ( link( d_target, path ) != 0 ) {
+	if ( link( d_target, (const char *) path ) != 0 ) {
 	    if ( create_prefix && errno == ENOENT ) {
 		errno = 0;
 		if ( mkprefix( path ) != 0 ) {
-		    perror( path );
+		    perror( (const char *) path );
 		    return( 1 );
 		}
-		if ( link( d_target, path ) != 0 ) {
-		    perror( path );
+		if ( link( d_target, (const char *) path ) != 0 ) {
+		    perror( (const char *) path );
 		    return( 1 );
 		}
 	    } else {
-		perror( path );
+	        perror( (const char *) path );
 		return( 1 );
 	    }
 	}
@@ -188,8 +188,8 @@ update( char *path, char *displaypath, int present, int newfile,
 	    return( 1 );
 	}
 	if ( present ) {
-	    if ( unlink( path ) != 0 ) {
-		perror( path );
+	  if ( unlink( (const char *) path ) != 0 ) {
+	        perror( (const char *) path );
 		return( 1 );
 	    }
 	    present = 0;
@@ -198,19 +198,19 @@ update( char *path, char *displaypath, int present, int newfile,
 	    fprintf( stderr, "line %d: target path too long\n", linenum );
 	    return( 1 );
 	} 
-	if ( symlink( d_target, path ) != 0 ) {
+	if ( symlink( d_target, (const char *) path ) != 0 ) {
 	    if ( create_prefix && errno == ENOENT ) {
 		errno = 0;
 		if ( mkprefix( path ) != 0 ) {
-		    perror( path );
+		    perror( (const char *) path );
 		    return( 1 );
 		}
-		if ( symlink( d_target, path ) != 0 ) {
-		    perror( path );
+		if ( symlink( d_target, (const char *) path ) != 0 ) {
+		    perror( (const char *) path );
 		    return( 1 );
 		}
 	    } else {
-		perror( path );
+	        perror( (const char *) path );
 		return( 1 );
 	    }
 	}
@@ -223,8 +223,8 @@ update( char *path, char *displaypath, int present, int newfile,
 	}
 #ifdef HAVE_LCHOWN
 	if ( uid != st->st_uid || gid != st->st_gid ) {
-	    if ( lchown( path, uid, gid ) != 0 ) {
-		perror( path );
+	  if ( lchown( (const char *) path, uid, gid ) != 0 ) {
+	    perror( (const char *) path );
 		return( 1 );
 	    }
 	}
@@ -268,24 +268,24 @@ update( char *path, char *displaypath, int present, int newfile,
 	mode = strtol( targv[ 2 ], (char **)NULL, 8 ) | S_IFIFO;
 
 	if ( !present ) {
-	    if ( mkfifo( path, mode ) != 0 ){
+	    if ( mkfifo( (char *) path, mode ) != 0 ){
 		if ( create_prefix && errno == ENOENT ) {
 		    errno = 0;
 		    if ( mkprefix( path ) != 0 ) {
-			perror( path );
+		        perror( (const char *) path );
 			return( 1 );
 		    }
-		    if ( mkfifo( path, mode ) != 0 ) {
-			perror( path );
+		    if ( mkfifo( (const char *) path, mode ) != 0 ) {
+		        perror( (const char *) path );
 			return( 1 );
 		    }
 		} else {
-		    perror( path );
+		    perror( (const char *) path );
 		    return( 1 );
 		}
 	    }
-	    if ( lstat( path, st ) != 0 ) {
-		perror( path );
+	    if ( lstat( (const char *) path, st ) != 0 ) {
+	        perror( (const char *) path );
 		return( 1 );
 	    }
 	    present = 1;
@@ -305,8 +305,8 @@ update( char *path, char *displaypath, int present, int newfile,
 
 	if ( present && (( minor( st->st_rdev ) != atoi( targv[ 6 ] )) ||
 		( major( st->st_rdev ) != atoi( targv[ 5 ] )))) {
-	    if ( unlink( path ) != 0 ) {
-		perror( path );
+	    if ( unlink( (const char *) path ) != 0 ) {
+	        perror( (const char *) path );
 		return( 1 );
 	    }
 	    present = 0;
@@ -316,7 +316,7 @@ update( char *path, char *displaypath, int present, int newfile,
 #ifdef sun
 	    if ( ( dev = makedev( (major_t)atoi( targv[ 5 ] ),
 		   (minor_t)atoi( targv[ 6 ] ) ) ) == NODEV ) {
-	       perror( path );
+	       perror( (const char *) path );
 	       return( 1 );
 	    }
 #else /* !sun */
@@ -329,24 +329,24 @@ update( char *path, char *displaypath, int present, int newfile,
 		mode |= S_IFCHR;
 	    }
 
-	    if ( mknod( path, mode, dev ) != 0 ) {
+	    if ( mknod( (const char *) path, mode, dev ) != 0 ) {
 		if ( create_prefix && errno == ENOENT ) {
 		    errno = 0;
 		    if ( mkprefix( path ) != 0 ) {
-			perror( path );
+		        perror( (const char *) path );
 			return( 1 );
 		    }
-		    if ( mknod( path, mode, dev ) != 0 ) {
-			perror( path );
+		    if ( mknod( (const char *) path, mode, dev ) != 0 ) {
+		        perror( (const char *) path );
 			return( 1 );
 		    }
 		} else {
-		    perror( path );
+		    perror( (const char *) path );
 		    return( 1 );
 		}
 	    }
-	    if ( lstat( path, st ) != 0 ) {
-		perror( path );
+	    if ( lstat( (const char *) path, st ) != 0 ) {
+	        perror( (const char *) path );
 		return( 1 );
 	    }
 	    present = 1;
@@ -389,8 +389,8 @@ update( char *path, char *displaypath, int present, int newfile,
     uid = atoi( targv[ 3 ] );
     gid = atoi( targv[ 4 ] );
     if ( uid != st->st_uid || gid != st->st_gid ) {
-	if ( chown( path, uid, gid ) != 0 ) {
-	    perror( path );
+        if ( chown( (const char *) path, uid, gid ) != 0 ) {
+	  perror( (const char *) path );
 	    return( 1 );
 	}
 	if ( uid != st->st_uid ) {
@@ -408,8 +408,8 @@ update( char *path, char *displaypath, int present, int newfile,
     if (( mode != ( T_MODE & st->st_mode )) ||
             (( uid != st->st_uid || gid != st->st_gid ) &&
             (( mode & ( S_ISUID | S_ISGID )) != 0 ))) {
-	if ( chmod( path, mode ) != 0 ) {
-	    perror( path );
+        if ( chmod( (const char *) path, mode ) != 0 ) {
+	  perror((const char *) path );
 	    return( 1 );
 	}
 	if ( !quiet && !showprogress ) printf( " mode" );

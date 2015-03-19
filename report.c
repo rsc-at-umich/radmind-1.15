@@ -28,9 +28,9 @@
 
 #include "code.h"
 #include "report.h"
+#include "connect.h"
 
 extern int		verbose;
-extern void		(*logger)( char * );
 extern struct timeval	timeout;
 
 /*
@@ -41,11 +41,11 @@ extern struct timeval	timeout;
  *	1:	report failed
  */
     int
-report_event( SNET *sn, char *event, char *repodata )
+report_event( SNET *sn, const char *event, const char *repodata )
 {
     struct timeval	tv;
     char		*line;
-    char		*e_repodata;
+    const char		*e_repodata;
     int			i, len;
 
     /* sanity check the event */
@@ -53,16 +53,17 @@ report_event( SNET *sn, char *event, char *repodata )
 	fprintf( stderr, "report_event: event must be non-NULL\n" );
 	return( 1 );
     }
+
     if (( len = strlen( event )) == 0 ) {
 	fprintf( stderr, "report_event: invalid zero-length event\n" );
 	return( 1 );
-    } else {
-	for ( i = 0; i < len; i++ ) {
-	    if ( isspace(( int )event[ i ] )) {
-		fprintf( stderr, "report_event: event must not "
-			"contain whitespace\n" );
-		return( 1 );
-	    }
+    }
+
+    for ( i = 0; i < len; i++ ) {
+        if ( isspace(( int )event[ i ] )) {
+	    fprintf( stderr, "report_event: event must not "
+		     "contain whitespace\n" );
+	    return( 1 );
 	}
     }
 
@@ -94,7 +95,7 @@ report_event( SNET *sn, char *event, char *repodata )
  * report_error_and_exit: report an error and exit with the give value
  */
     void
-report_error_and_exit( SNET *sn, char *event, char *repodata, int rc )
+report_error_and_exit( SNET *sn, const char *event, const char *repodata, int rc )
 {
     ( void )report_event( sn, event, repodata );
 

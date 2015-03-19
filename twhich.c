@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2013 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include <openssl/evp.h>
 
@@ -19,11 +20,14 @@
 #include "pathcmp.h"
 #include "list.h"
 #include "wildcard.h"
+#include "usageopt.h"
 
 const EVP_MD    *md;
 
 int		case_sensitive = 1;
 int		tran_format = -1; 
+
+char  *progname = "twhich";
 
 /*
  * exit codes:
@@ -33,23 +37,23 @@ int		tran_format = -1;
  */
 
     static int
-twhich( char *pattern, int displayall )
+twhich( const filepath_t *pattern, int displayall )
 {
     struct node		*node;
-    struct transcript	*tran;
-    extern struct transcript	*tran_head;
+    transcript_t	*tran;
     extern struct list	*exclude_list;
     int			cmp = 0, match = 0;
 
     if (debug)
-        fprintf (stderr, "*debug: twhich ('%s', displayall=%d)\n", pattern, displayall);
+        fprintf (stderr, "*debug: twhich ('%s', displayall=%d)\n",
+		 pattern, displayall);
 
     /* check exclude list */
     if ( exclude_list->l_count > 0 ) {
     	if (debug > 2)
 	    fprintf (stderr, "*debug: exclude_list->l_count=%d\n", exclude_list->l_count);
 
-	for ( node = list_pop_head( exclude_list ); node != NULL;
+	for ( node = list_pop_head( exclude_list ); node != (struct node *) NULL;
 		node = list_pop_head( exclude_list )) {
 
 	    if (debug > 1)
@@ -67,12 +71,12 @@ twhich( char *pattern, int displayall )
 	}
     }
 
-    for ( tran = tran_head; tran->t_next != NULL; tran = tran->t_next ) {
+    for ( tran = tran_head; tran->t_next != (transcript_t *) NULL; tran = tran->t_next ) {
 
 	/* Skip NULL/empty transcripts */
 	if ( tran->t_eof ) {
 	    if (debug)
-	    	fprintf (stderr, "*debug: empty transcript t:['%s'] from k:['%s'] line %d\n",
+	    	fprintf (stderr, "*debug: exhausted transcript t:['%s'] from k:['%s'] line %d\n",
 			tran->t_shortname, tran->t_kfile, tran->t_linenum);
 	    continue;
 	}
@@ -93,7 +97,7 @@ twhich( char *pattern, int displayall )
 
 	if ( cmp > 0 ) {
 	    if (debug)
-	    	fprintf (stderr, "*debug: pattern '%s' not found before in t:['%s'] from k:['%s'] line %d\n",
+	    	fprintf (stderr, "*debug: pattern '%s' not found in t:['%s'] from k:['%s'] line %d\n",
 			pattern, tran->t_shortname, tran->t_kfile, tran->t_linenum);
 	    continue;
 	}
@@ -114,7 +118,9 @@ twhich( char *pattern, int displayall )
 		break;
 
 	    default:
-		fprintf( stderr, "unknown transcript type\n" );
+	        fprintf( stderr,
+			 "%s: FATAL - unknown transcript type (%d) from command file '%s' line %d\n",
+			 progname, tran->t_type, tran->t_kfile, tran->t_linenum);
 		exit( 2 );
 	    }
 	    printf( "# %s:\n", tran->t_kfile );
@@ -140,19 +146,85 @@ done:
     }
 }
 
+
+extern char *optarg;
+extern int optind, opterr, optopt;
+
+/*
+ * Command-line options
+ *
+ * Formerly getopt - "adIK:rsV"
+ */
+
+static const usageopt_t main_usage[] = 
+  {
+    { (struct option) { "all",   no_argument,             NULL, 'a' }, 
+     		"list all transcripts that contain <file>", NULL }, 
+
+    { (struct option) { "buffer-size", required_argument,  NULL, 'B' },
+      "Max size of transcript file to buffer in memory (reduces file descriptor usage)", "0-maxint"},
+
+    { (struct option) { "case-insensitive", no_argument,   NULL, 'I' },
+     		"case insensitive when comparing paths", NULL },
+
+    { (struct option) { "command-file", required_argument, NULL, 'K' },
+                "Specify command file, defaults to '" _RADMIND_COMMANDFILE "'", "command.K" },
+
+    { (struct option) { "debug", no_argument, NULL, 'd'},
+      		"Raise debugging level to see what's happening", NULL},
+
+    { (struct option) { "server", no_argument, NULL, 's'},
+      "Indicate that 'twhich' is running on a 'radmind' server", NULL},
+
+    { (struct option) { "recursive", no_argument, NULL, 'r' },
+	        "recursively searches for each path element in <file>", NULL},
+
+    { (struct option) { "help",         no_argument,       NULL, 'H' },
+     		"This message", NULL },
+    
+    { (struct option) { "version",      no_argument,       NULL, 'V' },
+     		"show version number and exits", NULL },
+    
+    /* End of list */
+    { (struct option) {(char *) NULL, 0, (int *) NULL, 0}, (char *) NULL, (char *) NULL}
+  }; /* end of main_usage[] */
+
+/* Main */
+
     int
 main( int argc, char **argv )
 {
     int			c, err = 0, defaultkfile = 1, rc = 0, len;
     int			server = 0, displayall = 0, recursive = 0;
+    int                 tmp_i;
     extern char		*version;
-    char		*kfile = _RADMIND_COMMANDFILE;
-    char		*pattern, *p;
+    filepath_t	        *kfile = (filepath_t *) _RADMIND_COMMANDFILE;
+    filepath_t     	*pattern;
+    filepath_t		*p;
+    int                  optndx = 0;
+    struct option       *main_opts;
+    char                *main_optstr;
 
-    while (( c = getopt( argc, argv, "adIK:rsV" )) != EOF ) {
+    /* Get our name from argv[0] */
+    for (main_optstr = argv[0]; *main_optstr; main_optstr++) {
+        if (*main_optstr == '/')
+	    progname = main_optstr+1;
+    }
+
+    main_opts = usageopt_option_new (main_usage, &main_optstr);
+
+    while (( c = getopt_long (argc, argv, main_optstr, main_opts, &optndx)) != -1) {
 	switch( c ) {
 	case 'a':
 	    displayall = 1;
+	    break;
+
+	case 'B':
+	    tmp_i = atoi (optarg);
+
+	    if ((errno == 0) && (tmp_i >= 0)) {
+	        transcript_buffer_size = tmp_i;
+	    }
 	    break;
 
 	case 'd':
@@ -161,7 +233,7 @@ main( int argc, char **argv )
 
 	case 'K':
 	    defaultkfile = 0;
-	    kfile = optarg;
+	    kfile = (filepath_t *) optarg;
 	    break;
 
 	case 'I':
@@ -180,28 +252,41 @@ main( int argc, char **argv )
 	    printf( "%s\n", version );
 	    exit( 0 );
 
+	case 'H':  /* --help */
+	  usageopt_usage (stdout, 1 /* verbose */, progname,  main_usage,
+			  "<file>", 80);
+	  exit (0);
+
+
+
 	default:
+	    fprintf (stderr, "%s: Invalid or unsupported option, '-%c'\n",
+		     progname, c);
 	    err++;
 	    break;
 	}
     }
 
     if (( argc - optind ) != 1 ) {
+        if (err == 0)
+          fprintf (stderr, "%s: <file> missing\n", progname);
 	err++;
     }
 
-    pattern = argv[ argc - 1 ];
-    len = strlen( pattern );
+    pattern = (filepath_t *) argv[ argc - 1 ];
+    len = filepath_len( pattern );
 
     if ( server && defaultkfile ) {
+        fprintf (stderr, "%s: -s and -K are mutually exclusive\n",
+		 progname);
 	err++;
     }
 
     if ( err ) {
-        fprintf( stderr, "Usage: %s [ -aIrV ] [ -K command file ] file\n",
-	    argv[ 0 ] );
-        fprintf( stderr, "Usage: %s -s -K command [ -aIrV ] file\n",
-	    argv[ 0 ] );
+        usageopt_usage (stderr, 0 /* not verbose */, progname,  main_usage,
+			"<file>", 80);
+	fprintf (stderr, "%s: Use --help to get more verbose usage\n",
+		 progname);
         exit( 2 );
     }
 
@@ -236,11 +321,17 @@ main( int argc, char **argv )
 
     if ( recursive ) {
     	if (debug)
-	    fprintf(stderr, "*debug: recursive search - pattern='%s'\n", pattern);
+	    fprintf(stderr, "*debug: recursive search - pattern='%s'\n",
+		    pattern);
 
-	for ( p = pattern; *p == '/'; p++ )
-	    ;
-	for ( p = strchr( p, '/' ); p != NULL; p = strchr( p, '/' )) {
+	/* Skip the the '/' */
+	for ( p = pattern; *p == '/'; p++ ) {
+	  continue;  /* IBM Compilers don't like empty loops. */
+	}
+
+	for ( p = (filepath_t *) strchr( (char *) p, '/' ); p != NULL;
+	      p = (filepath_t *) strchr( (char *) p, '/' ))
+	{
 	    *p = '\0';
 	    if ( twhich( pattern, displayall ) != 0 ) {
 		printf( "# %s: not found\n", pattern );
@@ -250,6 +341,11 @@ main( int argc, char **argv )
 	}
     }
     rc = twhich( pattern, displayall );
+
+    if ((debug > 0) && (transcript_buffer_size > 0)) {
+        printf ("%u transcripts buffered, %u transcripts not buffered\n", 
+		transcripts_buffered, transcripts_unbuffered);
+    }
 
     exit( rc );
 }

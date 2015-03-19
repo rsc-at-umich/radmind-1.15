@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2007 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2007, 2013 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -49,15 +49,14 @@
 #include "report.h"
 #include "mkprefix.h"
 
-int cleandirs( char *path, struct llist *khead );
-int clean_client_dir( void );
-int check( SNET *sn, char *type, char *path); 
-int createspecial( SNET *sn, struct list *special_list );
-int getstat( SNET *sn, char *description, char *stats );
-int read_kfile( char *, char * );
+static int cleandirs( const filepath_t *path, llist_t *khead );
+static int clean_client_dir( void );
+static int check( SNET *sn, const char *type, const filepath_t *path); 
+static int createspecial( SNET *sn, struct list *special_list );
+static int getstat( SNET *sn, const char *description, char *stats );
+static int read_kfile( const filepath_t *kfile, const char *event );
 SNET *sn;
 
-void			(*logger)( char * ) = NULL;
 int			linenum = 0;
 int			cksum = 0;
 int			verbose = 0;
@@ -68,31 +67,32 @@ int			change = 0;
 int			case_sensitive = 1;
 int			report = 1;
 int			create_prefix = 0;
-char			*base_kfile= _RADMIND_COMMANDFILE;
-char			*radmind_path = _RADMIND_PATH;
-char			*kdir= "";
+static filepath_t	*base_kfile= (filepath_t *) _RADMIND_COMMANDFILE;
+static filepath_t	*radmind_path = (filepath_t *) _RADMIND_PATH;
+static filepath_t	*kdir= (filepath_t *) "";
 const EVP_MD		*md;
 SSL_CTX  		*ctx;
-struct list		*special_list, *kfile_seen;
+list_t			*special_list = (list_t *) NULL,
+			*kfile_seen = (list_t *) NULL;
 
 extern struct timeval	timeout;
 extern char		*version, *checksumlist;
 extern char             *caFile, *caDir, *cert, *privatekey; 
 
     static void
-expand_kfile( struct llist **khead, char *kfile )
+expand_kfile( llist_t **khead, const filepath_t *kfile )
 {
-    struct llist	*new;
+    llist_t		*new;
     FILE		*kf;
-    char		path[ MAXPATHLEN ];
+    filepath_t		path[ MAXPATHLEN ];
     char		buf[ MAXPATHLEN ];
     char		**tav;
     int			tac;
     size_t		len;
     unsigned int	line = 0;
 
-    if (( kf = fopen( kfile, "r" )) == NULL ) {
-	perror( kfile );
+    if (( kf = fopen( (char *) kfile, "r" )) == NULL ) {
+      perror( (const char *) kfile );
 	exit( 2 );
     }
 
@@ -114,7 +114,7 @@ expand_kfile( struct llist **khead, char *kfile )
 	    continue;
 	}
 
-	if ( snprintf( path, MAXPATHLEN, "%s%s",
+	if ( snprintf( (char *) path, MAXPATHLEN, "%s%s",
 			kdir, tav[ 1 ] ) >= MAXPATHLEN ) {
 	    fprintf( stderr, "%s%s: path too long\n",
 			kdir, tav[ 1 ] );
@@ -132,19 +132,21 @@ expand_kfile( struct llist **khead, char *kfile )
     }
 }
 
-    int
-cleandirs( char *path, struct llist *khead )
+    static int
+cleandirs( const filepath_t *path, llist_t *khead )
 {
     DIR			*d;
     struct dirent	*de;
-    struct llist	*head = NULL, *kcur;
-    struct llist	*cur, *new;
+    llist_t		*head = (llist_t *) NULL,
+      			*kcur,
+      			*cur,
+      			*new;
     struct stat		st;
-    char		fsitem[ MAXPATHLEN ];
+    filepath_t		fsitem[ MAXPATHLEN ];
     int			match = 0;
 
-    if (( d = opendir( path )) == NULL ) {
-	perror( path );
+    if (( d = opendir( (const char *) path )) == NULL ) {
+        perror( (const char *) path );
 	return( -1 );
     }
 
@@ -155,7 +157,7 @@ cleandirs( char *path, struct llist *khead )
 	    continue;
 	}
 
-	if ( snprintf( fsitem, MAXPATHLEN, "%s/%s", path, de->d_name )
+	if ( snprintf( (char *) fsitem, MAXPATHLEN, "%s/%s", (const char *) path, de->d_name )
 		>= MAXPATHLEN ) {
 	    fprintf( stderr, "%s/%s: path too long\n", path, de->d_name );
 	    return( -1 );
@@ -166,9 +168,9 @@ cleandirs( char *path, struct llist *khead )
 	 * handles "-K kfile.K", where kfile path is
 	 * same as "./kfile.K", but is passed as "kfile.K"
 	 */
-	if ( strcmp( fsitem, base_kfile ) == 0 ||
-		( strncmp( kdir, path, strlen( path )) == 0
-		&& strcmp( base_kfile, de->d_name ) == 0 )) {
+	if ( filepath_cmp( fsitem, base_kfile ) == 0 ||
+	     ( filepath_ncmp( kdir, path, filepath_len( path )) == 0
+	       && filepath_cmp(base_kfile, (filepath_t *) de->d_name ) == 0 )) {
 	    continue;
 	}
 
@@ -182,18 +184,18 @@ cleandirs( char *path, struct llist *khead )
 	return( -1 );
     }
 
-    for ( cur = head; cur != NULL; cur = cur->ll_next ) {
-	if ( lstat( cur->ll_name, &st ) != 0 ) {
-	    perror( cur->ll_name );
+    for ( cur = head; cur != (llist_t *) NULL; cur = cur->ll_next ) {
+      if ( lstat( (char *) cur->ll_name, &st ) != 0 ) {
+	    perror( (char *) cur->ll_name );
 	    return( -1 );
 	}
 
-	for ( kcur = khead; kcur != NULL; kcur = kcur->ll_next ) {
+	for ( kcur = khead; kcur != (llist_t *) NULL; kcur = kcur->ll_next ) {
 	    if (( case_sensitive &&
-			strcmp( cur->ll_name, kcur->ll_name ) == 0 ) ||
+		  strcmp( (char *) cur->ll_name, (char *) kcur->ll_name ) == 0 ) ||
 		    ( !case_sensitive &&
-			strcasecmp( cur->ll_name, kcur->ll_name ) == 0 ) ||
-		    ischildcase( kcur->ll_name, cur->ll_name, case_sensitive)) {
+		      strcasecmp( (char *) cur->ll_name, (char *) kcur->ll_name ) == 0 ) ||
+		ischildcase(kcur->ll_name, cur->ll_name, case_sensitive)) {
 		match = 1;
 		break;
 	    }
@@ -201,13 +203,13 @@ cleandirs( char *path, struct llist *khead )
 
 	if ( !match ) {
 	    if ( S_ISDIR( st.st_mode )) {
-		rmdirs( cur->ll_name );
+	        rmdirs(cur->ll_name );
 		if ( verbose ) {
 		    printf( "unused directory %s deleted\n", cur->ll_name );
 		}
 	    } else {
-		if ( unlink( cur->ll_name ) != 0 ) {
-		    perror( cur->ll_name );
+	      if ( unlink( (char *) cur->ll_name ) != 0 ) {
+		    perror( (char *) cur->ll_name );
 		    return( -1 );
 		}
 		if ( verbose ) {
@@ -225,12 +227,12 @@ cleandirs( char *path, struct llist *khead )
     return( 0 );
 }
 
-    int
+    static int
 clean_client_dir( void )
 {
-    struct llist	*khead = NULL;
-    struct node		*node;
-    char		dir[ MAXPATHLEN ];
+    llist_t		*khead = NULL;
+    node_t		*node;
+    filepath_t		dir[ MAXPATHLEN ];
     char		*p;
 
     expand_kfile( &khead, base_kfile );
@@ -244,8 +246,10 @@ clean_client_dir( void )
      * can't pass in kdir, since it has a trailing slash.
      * bounds checking done when creating kdir in main().
      */
-    strcpy( dir, kdir );
-    if (( p = strrchr( dir, '/' )) != NULL ) {
+    filepath_ncpy( dir, kdir, sizeof(dir)-1 );
+    dir[sizeof(dir)-1] = '\0';  /* Safety */
+
+    if (( p = strrchr( (char *) dir, '/' )) != NULL ) {
 	*p = '\0';
     }
 
@@ -256,8 +260,8 @@ clean_client_dir( void )
     return( 0 );
 }
 
-    int 
-getstat( SNET *sn, char *description, char *stats ) 
+    static int 
+getstat( SNET *sn, const char *description, char *stats ) 
 {
     struct timeval      tv;
     char		*line;
@@ -298,11 +302,11 @@ getstat( SNET *sn, char *description, char *stats )
     int
 createspecial( SNET *sn, struct list *special_list )
 {
-    FILE		*fs;
-    struct node 	*node;
-    char		filedesc[ MAXPATHLEN * 2 ];
-    char		path[ MAXPATHLEN ];
-    char		stats[ MAXPATHLEN ];
+    FILE	*fs;
+    node_t 	*node;
+    char	filedesc[ MAXPATHLEN * 2 ];
+    char	path[ MAXPATHLEN ];
+    char	stats[ MAXPATHLEN ];
 
     /* Open file */
     if ( snprintf( path, MAXPATHLEN, "%sspecial.T.%i", kdir,
@@ -356,7 +360,7 @@ createspecial( SNET *sn, struct list *special_list )
  */
 
     int
-check( SNET *sn, char *type, char *file )
+check( SNET *sn, const char *type, const filepath_t *file )
 {
     int		needupdate = 0;
     char	**targv;
@@ -364,46 +368,52 @@ check( SNET *sn, char *type, char *file )
     char 	pathdesc[ 2 * MAXPATHLEN ];
     char 	tempfile[ 2 * MAXPATHLEN ];
     char        ccksum[ SZ_BASE64_E( EVP_MAX_MD_SIZE ) ];
-    char	path[ MAXPATHLEN ];
-    char	*p;
+    filepath_t	path[ MAXPATHLEN ];
+    filepath_t  copy_file[ MAXPATHLEN ];
+    filepath_t	*p;
     int		tac;
     struct stat		st;
     struct utimbuf      times;
 
-    if ( file != NULL ) {
-	if ( snprintf( pathdesc, MAXPATHLEN * 2, "%s %s", type, file  )
+    if ( file != (filepath_t *) NULL ) {
+        if ( snprintf( pathdesc, MAXPATHLEN * 2, "%s %s", type, (const char *) file  )
 		>= ( MAXPATHLEN * 2 )) {
 	    fprintf( stderr, "%s %s: too long", type, file );
 	    return( 2 );
 	}
 
 	/* create full path */
-	if ( snprintf( path, MAXPATHLEN, "%s%s", kdir, file )
+	if ( snprintf( (char *) path, MAXPATHLEN, "%s%s", kdir, (const char *) file )
 		>= MAXPATHLEN ) {
 	    fprintf( stderr, "%s%s: path too long\n", kdir, file );
 	    return( 2 );
 	}
 
+	strncpy ((char *) copy_file, (const char *) file, sizeof(copy_file)-1);
+	copy_file[sizeof(copy_file)-1] = '\0'; /* Saftey */
+
 	/* Check for transcript with directories */
-	for ( p = strchr( file, '/' ); p != NULL; p = strchr( p, '/' )) {
+	for ( p = (filepath_t *) strchr( (const char *) copy_file, '/' );
+	      p != NULL; p = (filepath_t *) strchr( (char *) p, '/' ))
+	{
 	    *p = '\0';
 
 	    /* Check to see if path exists as a directory */
-	    if ( snprintf( tempfile, MAXPATHLEN, "%s%s", kdir, file )
+	    if ( snprintf( tempfile, MAXPATHLEN, "%s%s", kdir, (char *) copy_file )
 		    >= MAXPATHLEN ) {
-		fprintf( stderr, "%s%s: path too long\n", kdir, file );
+	        fprintf( stderr, "%s%s: path too long\n", kdir, (char *) copy_file );
 		return( 2 );
 	    }
 	    if ( stat( tempfile, &st ) != 0 ) {
 		if ( errno != ENOENT ) {
 		    perror( tempfile );
 		    return( 2 );
-		} else {
-		    if ( mkdir( tempfile, 0777 ) != 0 ) {
-			perror( tempfile );
-			return( 2 );
-		    }
 		}
+		if ( mkdir( tempfile, 0777 ) != 0 ) {
+		    perror( tempfile );
+		    return( 2 );
+		}
+
 	    } else {
 		/* Make sure it is a directory */
 		if ( !S_ISDIR( st.st_mode )) {
@@ -419,15 +429,15 @@ check( SNET *sn, char *type, char *file )
 	    }
 	    *p++ = '/';
 	}
-	if ( stat( path, &st ) != 0 ) {
+	if ( stat( (char *) path, &st ) != 0 ) {
 	    if ( errno != ENOENT ) {
-		perror( path );
+	        perror( (char *) path );
 		return( 2 );
 	    }
 	} else {
 	    if ( S_ISDIR( st.st_mode )) {
 		if ( rmdirs( path ) != 0 ) {
-		    perror( path );
+		    perror( (char *) path );
 		    return( 2 );
 		}
 	    }
@@ -444,11 +454,11 @@ check( SNET *sn, char *type, char *file )
 	file = base_kfile;
 
 	/* create full path */
-	if ( strlen( base_kfile ) >= MAXPATHLEN ) {
+	if ( filepath_len( base_kfile ) >= MAXPATHLEN ) {
 	    fprintf( stderr, "%s: path too long\n", base_kfile );
 	    return( 2 );
 	}
-	strcpy( path, base_kfile );
+	filepath_cpy( path, base_kfile );
     }
 
     if ( getstat( sn, pathdesc, stats ) != 0 ) {
@@ -462,32 +472,39 @@ check( SNET *sn, char *type, char *file )
     times.modtime = atoi( targv[ 5 ] );
     times.actime = time( NULL );
 
-    if (( stat( path, &st )) != 0 ) {
+    if (( stat( (char *) path, &st )) != 0 ) {
 	if ( errno != ENOENT ) {
-	    perror( path );
+	    perror( (char *) path );
 	    return( 2 );
-	} else {
-	    /* Local file is missing */
-	    if ( update ) {
-		if ( !quiet ) { printf( "%s:", path ); fflush( stdout ); }
-		if ( retr( sn, pathdesc, path, tempfile, 0666, 
-			strtoofft( targv[ 6 ], NULL, 10 ), targv[ 7 ] ) != 0 ) {
-		    return( 2 );
-		}
-		if ( utime( tempfile, &times ) != 0 ) {
-		    perror( path );
-		    return( 1 );
-		}
-		if ( rename( tempfile, path ) != 0 ) {
-		    perror( tempfile );
-		    return( 2 );
-		}
-		if ( !quiet ) printf( " updated\n" );
-	    } else {
-		if ( !quiet ) printf ( "%s: missing\n", path );
+	} 
+
+	/* Local file is missing */
+	if ( update ) {
+	    if ( !quiet ) {
+	        printf( "%s:", path );
+		fflush( stdout );
 	    }
-	    return( 1 );
+	    if ( retr( sn, (filepath_t *) pathdesc, path, (filepath_t *) tempfile,
+		       0666, strtoofft( targv[ 6 ], NULL, 10 ), targv[ 7 ] ) != 0 ) {
+	        return( 2 );
+	    }
+
+	    if ( utime( tempfile, &times ) != 0 ) {
+	        perror( tempfile );
+		return( 1 );
+	    }
+	    if ( rename( tempfile, (char *) path ) != 0 ) {
+	        perror( tempfile );
+		return( 2 );
+	    }
+	    if ( !quiet )
+	      printf( " updated\n" );
+
+	} else {
+	    if ( !quiet )
+	      printf ( "%s: missing\n", path );
 	}
+	return( 1 );
     }
 
     /*
@@ -499,7 +516,7 @@ check( SNET *sn, char *type, char *file )
     } else {
 	if ( cksum ) {
 	    if (( do_cksum( path, ccksum )) < 0 ) {
-		perror( path );
+	      perror( (char *) path );
 		return( 2 );
 	    }
 	    if ( strcmp( targv[ 7 ], ccksum ) != 0 ) {
@@ -513,21 +530,28 @@ check( SNET *sn, char *type, char *file )
     }
     if ( needupdate ) {
 	if ( update ) {
-	    if ( !quiet ) { printf( "%s:", path ); fflush( stdout ); }
-	    if ( unlink( path ) != 0 ) {
-		perror( path );
+	    if ( !quiet ) {
+	        printf( "%s:", path );
+		fflush( stdout );
+	    }
+
+	    if ( unlink( (char *) path ) != 0 ) {
+	        perror( (char *) path );
 		return( 2 );
 	    }
-	    if ( retr( sn, pathdesc, path, tempfile, 0666, 
-		    strtoofft( targv[ 6 ], NULL, 10 ), targv[ 7 ] ) != 0 ) {
+
+	    if ( retr( sn, (filepath_t *) pathdesc, path, 
+		       (filepath_t *) tempfile, 0666, strtoofft( targv[ 6 ], NULL, 10 ),
+		       targv[ 7 ] ) != 0 ) {
 		return( 2 );
 	    }
+
 	    if ( utime( tempfile, &times ) != 0 ) {
-		perror( path );
+	        perror( (char *) path );
 		return( 1 );
 	    }
-	    if ( rename( tempfile, path ) != 0 ) {
-		perror( path );
+	    if ( rename( tempfile, (char *) path ) != 0 ) {
+	        perror( (char *) path );
 		return( 2 );
 	    }
 	    if ( !quiet ) printf( " updated\n" );
@@ -555,15 +579,15 @@ main( int argc, char **argv )
     int			use_randfile = 0;
     int			clean = 0;
     unsigned short	port = 0;
-    char	lcksum[ SZ_BASE64_E( EVP_MAX_MD_SIZE ) ];
-    char	tcksum[ SZ_BASE64_E( EVP_MAX_MD_SIZE ) ];
+    char		lcksum[ SZ_BASE64_E( EVP_MAX_MD_SIZE ) ];
+    char		tcksum[ SZ_BASE64_E( EVP_MAX_MD_SIZE ) ];
     struct stat		tst, lst;
     extern int          optind;
     char		*host = _RADMIND_HOST, *p;
-    char		path[ MAXPATHLEN ];
-    char		tempfile[ MAXPATHLEN ];
-    char	        **capa = NULL;		/* capabilities */
-    char		*event = "ktcheck";	/* report event type */
+    filepath_t		path[ MAXPATHLEN ];
+    filepath_t		tempfile[ MAXPATHLEN ];
+    char	        **capa = (char **) NULL; /* capabilities */
+    char		*event = "ktcheck";	 /* report event type */
 
     while (( c = getopt( argc, argv,
 	    "Cc:D:e:h:IiK:np:P:qrvVw:x:y:z:Z:" )) != EOF ) {
@@ -583,7 +607,7 @@ main( int argc, char **argv )
             break;
 
 	case 'D':
-	    radmind_path = optarg;
+	  radmind_path = (filepath_t *) optarg;
 	    break;
 
 	case 'e':		/* set the event label for reporting */
@@ -603,7 +627,7 @@ main( int argc, char **argv )
 	    break;
 
 	case 'K':
-	    base_kfile = optarg;
+	    base_kfile = (filepath_t *) optarg;
 	    break;
 
 	case 'n':
@@ -705,22 +729,23 @@ main( int argc, char **argv )
 	exit( 2 );
     }
 
-    if ( strlen( base_kfile ) >= MAXPATHLEN ) {
+    if ( filepath_len( base_kfile ) >= MAXPATHLEN ) {
 	fprintf( stderr, "%s: path too long\n", base_kfile );
 	exit( 2 );
     }
-    if (( kdir = strdup( base_kfile )) == NULL ) {
+    if (( kdir = filepath_dup( base_kfile )) == NULL ) {
         perror( "strdup failed" );
         exit( 2 );
     }
-    if (( p = strrchr( kdir, '/' )) == NULL ) {
+    if (( p = strrchr( (char *) kdir, '/' )) == NULL ) {
         /* No '/' in kfile - use working directory */
-        kdir = "./";
+        kdir = (filepath_t *) "./";
     } else {
         p++;
         *p = (char)'\0';
     }
-    strcpy( path, base_kfile );
+    filepath_ncpy( path, base_kfile, sizeof(path)-1 );
+    path[sizeof(path)-1] = '\0'; /* Safety */
 
     if (( sn = connectsn( host, port )) == NULL ) {
 	exit( 2 );
@@ -792,23 +817,23 @@ main( int argc, char **argv )
 	    exit( 2 );
 	}
 
-	if ( snprintf( path, MAXPATHLEN, "%sspecial.T", kdir )
+	if ( snprintf( (char *) path, MAXPATHLEN, "%sspecial.T", kdir )
 		>= MAXPATHLEN ) {
 	    fprintf( stderr, "path too long: %sspecial.T\n", kdir );
 	    exit( 2 );
 	}
-	if ( snprintf( tempfile, MAXPATHLEN, "%sspecial.T.%i", kdir,
+	if ( snprintf( (char *) tempfile, MAXPATHLEN, "%sspecial.T.%i", kdir,
 		getpid()) >= MAXPATHLEN ) {
 	    fprintf( stderr, "path too long: %sspecial.T.%i\n", kdir,
 		    (int)getpid());
 	    exit( 2 );
 	}
 	/* get file sizes */
-	if ( stat( path, &lst ) != 0 ) {
+	if ( stat( (char *) path, &lst ) != 0 ) {
 	    if ( errno == ENOENT ) {
 		/* special.T did not exist */
 		if ( update ) { 
-		    if ( rename( tempfile, path ) != 0 ) {
+		  if ( rename( (char *) tempfile, (char *) path ) != 0 ) {
 			fprintf( stderr, "rename failed: %s %s\n", tempfile,
 			    path );
 			exit( 2 );
@@ -816,8 +841,8 @@ main( int argc, char **argv )
 		    if ( !quiet ) printf( "%s: created\n", path ); 
 		} else {
 		    /* special.T not updated */
-		    if ( unlink( tempfile ) !=0 ) {
-			perror( tempfile );
+		  if ( unlink( (char *) tempfile ) !=0 ) {
+		        perror( (char *) tempfile );
 			exit( 2 );
 		    }
 		    if ( !quiet ) printf( "%s: missing\n", path );
@@ -825,21 +850,21 @@ main( int argc, char **argv )
 		change++;
 		goto done;
 	    }
-	    perror( path );
+	    perror( (const char *) path );
 	    exit( 2 );
 	}
-	if ( stat( tempfile, &tst ) != 0 ) {
-	    perror( tempfile );
+	if ( stat( (char *) tempfile, &tst ) != 0 ) {
+	    perror( (char *) tempfile );
 	    exit( 2 );
 	}
 	/* get checksums */
 	if ( cksum ) {
 	    if ( do_cksum( path, lcksum ) < 0 ) {
-		perror( path );
+	        perror( (const char *) path );
 		exit( 2 );
 	    }
 	    if ( do_cksum( tempfile, tcksum ) < 0 ) {
-		perror( tempfile );
+	        perror( (char *) tempfile );
 		exit( 2 );
 	    }
 	}
@@ -856,7 +881,7 @@ main( int argc, char **argv )
 	    change++;
 
 	    if ( update ) {
-		if ( rename( tempfile, path ) != 0 ) {
+	      if ( rename( (char *) tempfile, (char *) path ) != 0 ) {
 		    fprintf( stderr, "rename failed: %s %s\n", tempfile,
 			    path );
 		    exit( 2 );
@@ -864,15 +889,15 @@ main( int argc, char **argv )
 		if ( !quiet ) printf( "%s: updated\n", path ); 
 	    } else {
 		if ( !quiet ) printf( "%s: out of date\n", path );
-		if ( unlink( tempfile ) !=0 ) {
-		    perror( tempfile );
+		if ( unlink( (char *) tempfile ) !=0 ) {
+		    perror( (char *) tempfile );
 		    exit( 2 );
 		}
 	    }
 	} else {
 	    /* local special.T correct */
-	    if ( unlink( tempfile ) !=0 ) {
-		perror( tempfile );
+	  if ( unlink( (char *) tempfile ) !=0 ) {
+	        perror( (char *) tempfile );
 		exit( 2 );
 	    }
 	}
@@ -923,12 +948,12 @@ done:
 }
 
     int
-read_kfile( char * kfile,  char * event )
+read_kfile( const filepath_t * kfile, const char * event )
 {
     int		ac, minus = 0, kline = 0;
     char	**av;
     char        line[ MAXPATHLEN ];
-    char	path[ MAXPATHLEN ];
+    filepath_t	path[ MAXPATHLEN ];
     ACAV	*acav;
     FILE	*f;
 
@@ -937,8 +962,8 @@ read_kfile( char * kfile,  char * event )
 	return( -1 );
     }
 
-    if (( f = fopen( kfile, "r" )) == NULL ) {
-	perror( kfile );
+    if (( f = fopen( (const char *) kfile, "r" )) == NULL ) {
+      perror( (const char *) kfile );
 	return( -1 );
     }
 
@@ -979,7 +1004,7 @@ read_kfile( char * kfile,  char * event )
 
 	switch( *av[ 0 ] ) {
 	case 'k':
-	    if ( snprintf( path, MAXPATHLEN, "%s%s", kdir,
+	  if ( snprintf( (char *) path, MAXPATHLEN, "%s%s", kdir,
 		    av[ 1 ] ) >= MAXPATHLEN ) {
 		fprintf( stderr, "path too long: %s%s\n", kdir, av[ 1 ] );
 		goto error;
@@ -996,7 +1021,7 @@ read_kfile( char * kfile,  char * event )
 		}
 	    }
 
-	    switch( check( sn, "COMMAND", av[ ac - 1] )) {
+	    switch( check( sn, "COMMAND", (filepath_t *) av[ ac - 1] )) {
 	    case 0:
 		break;
 	    case 1:
@@ -1021,23 +1046,23 @@ read_kfile( char * kfile,  char * event )
 	case 's':
 	    /* Added special file if it's not already in the list */
 	    if ( minus ) {
-		if ( list_check( special_list, av[ 1 ] )) {
-		    list_remove( special_list, av[ 1 ] );
-		}
+	        if ( list_check( special_list, (filepath_t *) av[ 1 ] )) {
+		  list_remove( special_list, (filepath_t *) av[ 1 ] );
+	        }
 	    } else {
-		if ( !list_check( special_list, av[ 1 ] )) {
-		    if ( list_insert_case( special_list, av[ 1 ],
+	          if ( !list_check( special_list, (filepath_t *) av[ 1 ] )) {
+		      if ( list_insert_case( special_list, (filepath_t *) av[ 1 ],
 				case_sensitive ) != 0 ) {
 			perror( "list_insert" );
 			exit( 2 );
-		    }
-		}
+		      }
+		  }
 	    }
 	    continue;
 	    
 	case 'p':
 	case 'n':
-	    switch( check( sn, "TRANSCRIPT", av[ ac - 1] )) {
+	  switch( check( sn, "TRANSCRIPT", (filepath_t *) av[ ac - 1] )) {
 	    case 0:
 		break;
 	    case 1:

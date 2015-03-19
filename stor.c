@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2013 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -48,9 +48,7 @@ extern int		dodots;
 extern int		cksum;
 extern int		linenum;
 extern int		force;
-extern int		showprogress;
 extern off_t		lsize, total;
-extern void            	(*logger)( char * );
 extern SSL_CTX  	*ctx;
 
     int
@@ -101,10 +99,10 @@ stor_response( SNET *sn, int *respcount, struct timeval *tv )
 }
 
     int
-n_stor_file( SNET *sn, char *pathdesc, char *path )
+n_stor_file( SNET *sn, const filepath_t *pathdesc, const filepath_t *path )
 {
     /* tell server what it is getting */
-    if ( snet_writef( sn, "%s\r\n", pathdesc ) < 0 ) {
+    if ( snet_writef( sn, "%s\r\n", (const char *) pathdesc ) < 0 ) {
 	fprintf( stderr, "n_store_file %s failed: %s\n", pathdesc,
 	    strerror( errno ));
 	exit( 2 );
@@ -126,8 +124,8 @@ n_stor_file( SNET *sn, char *pathdesc, char *path )
 }
 
     int 
-stor_file( SNET *sn, char *pathdesc, char *path, off_t transize,
-    char *trancksum )
+stor_file( SNET *sn, const filepath_t *pathdesc, const filepath_t *path,
+	   off_t transize, const char *trancksum )
 {
     int			fd;
     char 	      	buf[ 8192 ];
@@ -150,12 +148,12 @@ stor_file( SNET *sn, char *pathdesc, char *path, off_t transize,
     }
 
     /* Open and stat file */
-    if (( fd = open( path, O_RDONLY, 0 )) < 0 ) {
-	perror( path );
+    if (( fd = open( (const char *) path, O_RDONLY, 0 )) < 0 ) {
+        perror( (const char *) path );
 	exit( 2 );
     }
     if ( fstat( fd, &st ) < 0 ) {
-	perror( path );
+        perror( (const char *) path );
 	close( fd );
 	exit( 2 );
     }
@@ -176,7 +174,7 @@ stor_file( SNET *sn, char *pathdesc, char *path, off_t transize,
     size = st.st_size;
 
     /* tell server what it is getting */
-    if ( snet_writef( sn, "%s\r\n", pathdesc ) < 0 ) {
+    if ( snet_writef( sn, "%s\r\n", (const char *) pathdesc ) < 0 ) {
 	fprintf( stderr, "stor_file %s failed: %s\n", pathdesc,
 	    strerror( errno ));
 	exit( 2 );
@@ -210,7 +208,7 @@ stor_file( SNET *sn, char *pathdesc, char *path, off_t transize,
 	}
     }
     if ( rr < 0 ) {
-	perror( path );
+        perror( (const char *) path );
 	exit( 2 );
     }
 
@@ -231,7 +229,7 @@ stor_file( SNET *sn, char *pathdesc, char *path, off_t transize,
     if ( verbose ) fputs( "\n>>> .\n", stdout );
 
     if ( close( fd ) < 0 ) {
-	perror( path );
+        perror( (const char *) path );
 	exit( 2 );
     }
 
@@ -252,8 +250,9 @@ stor_file( SNET *sn, char *pathdesc, char *path, off_t transize,
 
 #ifdef __APPLE__
     int    
-stor_applefile( SNET *sn, char *pathdesc, char *path, off_t transize, 
-    char *trancksum, struct applefileinfo *afinfo )
+stor_applefile( SNET *sn, const char *pathdesc, const char *path,
+		off_t transize, const char *trancksum,
+		struct applefileinfo *afinfo )
 {
     int			rc = 0, dfd = 0, rfd = 0;
     off_t		size;
@@ -477,7 +476,7 @@ stor_applefile( SNET *sn, char *pathdesc, char *path, off_t transize,
 }
 
     int
-n_stor_applefile( SNET *sn, char *pathdesc, char *path )
+n_stor_applefile( SNET *sn, const char *pathdesc, const char *path )
 {
     struct timeval      	tv;
     struct applefileinfo	afinfo;
@@ -590,15 +589,16 @@ n_stor_applefile( SNET *sn, char *pathdesc, char *path )
 
 #else /* __APPLE__ */
     int
-stor_applefile( SNET *sn, char *pathdesc, char *path, off_t transize, 
-    char *trancksum, struct applefileinfo *afinfo )
+stor_applefile( SNET *sn, const filepath_t *pathdesc, const filepath_t *path,
+		off_t transize, const char *trancksum,
+		struct applefileinfo *afinfo )
 {
     fprintf( stderr, "stor_applefile %s invalid\n", pathdesc );
     exit( 2 );
 }
 
     int
-n_stor_applefile( SNET *sn, char *pathdesc, char *path )
+n_stor_applefile( SNET *sn, const filepath_t *pathdesc, const filepath_t *path )
 {
     fprintf( stderr, "n_stor_applefile %s invalid\n", pathdesc );
     exit( 2 );

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008 Regents of The University of Michigan.
+ * Copyright (c) 2008, 2013 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -11,11 +11,11 @@
 #include "wildcard.h"
 
     int
-wildcard( char *wild, char *p, int sensitive )
+wildcard( const filepath_t *wild, const filepath_t *p, int sensitive )
 {
     int		min, max;
     int		i, len;
-    char	*comma, *end;
+    const filepath_t	*comma, *end;
 
     for (;;) {
 	switch ( *wild ) {
@@ -38,13 +38,13 @@ wildcard( char *wild, char *p, int sensitive )
 	    if ( ! isdigit( (int)*p )) {
 		return( 0 );
 	    }
-	    i = atoi( p );
+	    i = atoi( (const char *) p );
 	    while ( isdigit( (int)*p )) p++;
 
 	    if ( ! isdigit( (int)*wild )) {
 		return( 0 );
 	    }
-	    min = atoi( wild );
+	    min = atoi( (const char *) wild );
 	    while ( isdigit( (int)*wild )) wild++;
 
 	    if ( *wild++ != '-' ) {
@@ -54,7 +54,7 @@ wildcard( char *wild, char *p, int sensitive )
 	    if ( ! isdigit( (int)*wild )) {
 		return( 0 );
 	    }
-	    max = atoi( wild );
+	    max = atoi( (const char *) wild );
 	    while ( isdigit( (int)*wild )) wild++;
 
 	    if ( *wild++ != '>' ) {
