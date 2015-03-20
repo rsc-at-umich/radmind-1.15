@@ -254,7 +254,7 @@ FRC :
 libsnet/libsnet.la : FRC
 	cd libsnet; ${MAKE}
 
-VERSION=1.14.1
+VERSION=1.15
 DISTDIR=radmind-${VERSION}
 
 dist   : distclean
