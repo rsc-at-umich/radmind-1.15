@@ -55,22 +55,38 @@ long			 tls_options = (long) (SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
 char                    *tls_cipher_suite = RADMIND_DEFAULT_TLS_CIPHER_SUITES;
 
 typedef struct tls_option_name_struct {
-    char *name;
+    const char *name;
     long  val;
 } tls_option_name_t;
 
 #define SSL_OPT(x) { #x, SSL_OP_##x }
 
+/*
+ * Some SSL_OP_xxx aren't available in all versions
+ * of OpenSSL.  
+ */
 static const tls_option_name_t ssl_opts[] = {
+#if defined(SSL_OP_SINGLE_DH_USE)
     SSL_OPT(SINGLE_DH_USE),
+#endif /* SSL_OP_SINGLE_DH_USE */
     SSL_OPT(NO_COMPRESSION),
     SSL_OPT(NO_QUERY_MTU),
     SSL_OPT(NO_TICKET),
+#if defined(SSL_OP_NO_SSLv2)
     SSL_OPT(NO_SSLv2),
+#endif /* SSL_OP_NO_TLSv2 */
+#if defined(SSL_OP_NO_SSLv3)
     SSL_OPT(NO_SSLv3),
+#endif /* SSL_OP_NO_SSLv3 */
+#if defined(SSL_OP_NO_TLSv1)
     SSL_OPT(NO_TLSv1),
+#endif /* SSL_OP_NO_TLSv1 */
+#if defined(SSL_OP_NO_TLSv1_1)
     SSL_OPT(NO_TLSv1_1),
+#endif /* SSL_OP_NO_TLSv1_1 */
+#if defined(SSL_OP_NO_TLSv1_2)
     SSL_OPT(NO_TLSv1_2),
+#endif /* SSL_OP_TLSv1_2 */
     SSL_OPT(NO_SESSION_RESUMPTION_ON_RENEGOTIATION),
     
     /* End of list */

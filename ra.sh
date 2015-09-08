@@ -291,7 +291,7 @@ if [ -f "${DEFAULTS}" ]; then
     . "${DEFAULTS}"
 fi
 
-while getopts %cD:h:Ilp:qr:tU:Vw:M: opt; do
+while getopts %cD:h:Ilp:qr:tU:vVw:M: opt; do
     case $opt in
     %)  PROGRESS="-%"
 	FPROGRESS="-%"
@@ -330,6 +330,9 @@ while getopts %cD:h:Ilp:qr:tU:Vw:M: opt; do
     U)	USER="${OPTARG}"
 	USERNAME="${OPTARG}"
     	;;
+
+    v)  FSDIFF_OPTS="${FSDIFF_OPTS}${FSDIFF_OPTS:+ }--verbose"
+	;;
 
     V)	${ECHO} ${VERSION}
 	exit 0

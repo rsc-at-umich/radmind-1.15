@@ -42,7 +42,7 @@ typedef struct
 extern int            usageopt_is_last_option (const usageopt_t *usageopts);
 
 extern struct option *usageopt_option_new ( const usageopt_t *usageopts,
-					    char **p_optstr);
+					    char **p_opt_str);
 
 extern void           usageopt_usage (FILE *out, unsigned int verbose,
 				      const char *progname,

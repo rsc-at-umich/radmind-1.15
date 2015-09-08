@@ -148,7 +148,7 @@ fs_walk( const unsigned char *path, struct stat *st, char *p_type,
 
 		if (debug > 1)
 		    alert_transcript (NULL, stderr, tran,
-				      "fs_walk() from '%s' to '%s'", path, temp);
+				      "%s() from '%s' to '%s'", __func__, path, temp);
 
 		fs_walk( temp, &st0, &type0, &afinfo0, start, finish, pdel );
 
@@ -166,8 +166,8 @@ fs_walk( const unsigned char *path, struct stat *st, char *p_type,
 	break;
     default :
          fprintf(stderr,
-		 "*fatal: in fs_walk() - transcript_check() returned an unexpected value for '%s'\n",
-		 path);
+		 "*fatal: in %s() - transcript_check() returned an unexpected value for '%s'\n",
+		 __func__, path);
 	exit( EX_SOFTWARE );
     }
 
@@ -386,7 +386,7 @@ main( int argc, char **argv )
 
     while (( c = getopt_long (argc, argv, main_optstr, main_opts, &optndx)) != -1) {
         switch( c ) {
-	case 'B':
+	case 'B':	/* --buffer-size <integer> */
 	    tmp_i = atoi (optarg);
 
 	    if ((errno == 0) && (tmp_i >= 0)) {
@@ -394,7 +394,7 @@ main( int argc, char **argv )
 	    }
 	    break;
 
-	case '%':
+	case '%':	/* --percentage */
 	case 'v':
 	    finish = 100;
 	    break;
@@ -403,7 +403,7 @@ main( int argc, char **argv )
 	    verbose ++;
 	    break;
 
-	case 'c':
+	case 'c':	/* --checksum <checksum-type> */
             OpenSSL_add_all_digests();
             md = EVP_get_digestbyname( optarg );
             if ( !md ) {
@@ -413,15 +413,15 @@ main( int argc, char **argv )
             cksum = 1;
             break;
 
-	case 'd':
+	case 'd':	/* --debug */
 	    debug++;
 	    break;
 
-	case 'I':
+	case 'I':	/* --case-insensitive */
 	    case_sensitive = 0;
 	    break;
 
-	case 'o':
+	case 'o': /* --output <transcript-file> */
 	    if (( outtran = fopen( optarg, "w" )) == NULL ) {
 		perror( optarg );
 		exit( 2 );
@@ -429,28 +429,28 @@ main( int argc, char **argv )
 	    use_outfile = 1;
 	    break;
 
-	case 'K':
+	case 'K': /* --command-file <path> */
 	    kfile = (unsigned char *) optarg;
 	    break;
 
-	case '1':
+	case '1':	/* --single-line */
 	    skip = 1;
-	case 'C':
+	case 'C':	/* --creatable */
 	    edit_path_change++;
 	    edit_path = CREATABLE;
 	    break;	
 
-	case 'A':
+	case 'A':	/* --applicable */
 	    edit_path_change++;
 	    edit_path = APPLICABLE;
 	    break;
 
-	case 'V':		
+	case 'V':	/* --version */	
 	    printf( "%s\n", version );
 	    printf( "%s\n", checksumlist );
 	    exit( 0 );
 
-	case 'W':		/* print a warning when excluding an object */
+	case 'W':	/* --warning :: print a warning when excluding an object */
 	    exclude_warnings = 1;
 	    break;
 
@@ -551,7 +551,7 @@ main( int argc, char **argv )
 	errflag++;
     }
 
-    /* Check that kfile isn't an abvious directory */
+    /* Check that kfile isn't an obvious directory */
     len = strlen( (const char *) kfile );
     if ( kfile[ len - 1 ] == '/' ) {
         errflag++;

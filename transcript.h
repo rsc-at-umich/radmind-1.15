@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2013, 2014 by the Regents of The University of Michigan.
+ * Copyright (c) 2003, 2013-2015 by the Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -12,37 +12,27 @@
 #  include <sys/stat.h>
 #  include <stdarg.h>
 
-#define T_NULL		0
-#define T_POSITIVE	1
-#define T_NEGATIVE	2 
-#define T_SPECIAL	3
+typedef enum { T_NULL, T_POSITIVE, T_NEGATIVE, T_SPECIAL } rad_Transcript_t;
 
-#define T_RELATIVE	0
-#define T_ABSOLUTE	1
+typedef enum { T_RELATIVE, T_ABSOLUTE } rad_Tpath_t;
 
-#define T_MOVE_TRAN	1
-#define T_MOVE_FS	2
-#define T_MOVE_BOTH	3 
+typedef enum { T_MOVE_TRAN, T_MOVE_FS, T_MOVE_BOTH } rad_T_MOVE_t;
 
-#define T_COMP_ISFILE   0
-#define T_COMP_ISDIR	1
-#define T_COMP_ISNEG	2
-#define T_COMP_ERROR	-1
+typedef enum { T_COMP_ERROR = -1, T_COMP_ISFILE = 0, 
+	       T_COMP_ISDIR, T_COMP_ISNEG } rad_T_COMP_t;
+
+typedef enum { APPLICABLE, CREATABLE } rad_apply_t;
+
+typedef enum { PR_unused, PR_TRAN_ONLY,
+	       PR_FS_ONLY, PR_DOWNLOAD,
+	       PR_STATUS, PR_STATUS_NEG,
+	       PR_STATUS_MINUS } rad_PR_t; 
+
+typedef enum { K_CLIENT, K_SERVER } rad_LOCATION_t;
 
 #define T_MODE		0x0FFF
 
-#define APPLICABLE	0
-#define CREATABLE	1
 
-#define PR_TRAN_ONLY	1  
-#define PR_FS_ONLY	2
-#define PR_DOWNLOAD	3 
-#define PR_STATUS	4 
-#define PR_STATUS_NEG	5
-#define PR_STATUS_MINUS	6
-
-#define K_CLIENT	0
-#define K_SERVER	1
 
 extern int		edit_path;
 extern int		skip;
@@ -53,14 +43,15 @@ extern char		*path_prefix;
 extern int		 debug;
 extern int		 verbose;
 
+
 struct pathinfo {
+    struct stat			pi_stat;
+    struct applefileinfo	pi_afinfo;
+    unsigned char	        pi_minus:1;  /* Only 0 or 1 */ 
     char			pi_type;
-    int				pi_minus;
     filepath_t		        pi_name[ MAXPATHLEN ];
     filepath_t 		        pi_link[ MAXPATHLEN ];
-    struct stat			pi_stat;
     char			pi_cksum_b64[ MAXPATHLEN ];
-    struct applefileinfo	pi_afinfo;
 };
 
 typedef struct pathinfo pathinfo_t;
@@ -79,17 +70,19 @@ typedef struct transcript transcript_t;
 struct transcript {
     transcript_t	*t_next;
     pathinfo_t		t_pinfo;
-    int 		t_type;
-    int			t_num;
+    rad_Transcript_t    t_type;   /* T_NEGATIVE, T_SPECIAL, etc */
+    unsigned int        t_eof:1;  /* 0 or 1 on end-file */
+    unsigned int	t_linenum; /* Line# in transcript file. */
+    unsigned int	t_num;	/* Transcript number ? Like id? */
+    unsigned int	id;
+    unsigned int        total_objects;  /* Total number of objects in transcript */
+    unsigned int        active_objects; /* Active number (not overlaid) */
+    FILE		*t_in;
+    char                *buffered; /* Full transcript buffer */
+    char		*buffer_position;
     filepath_t		t_fullname[ MAXPATHLEN ];
     filepath_t		t_shortname[ MAXPATHLEN ];
     filepath_t		t_kfile[ MAXPATHLEN ];
-    int			t_linenum;
-    int			t_eof;
-    FILE		*t_in;
-    unsigned int	id;
-    char                *buffered; /* Full transcript buffer */
-    char		*buffer_position;
 };
 
 extern transcript_t *tran_head;	/* Global ordered list of transcripts. */
@@ -120,7 +113,7 @@ extern void	     transcript_init( const filepath_t *kfile, int location );
 extern transcript_t *transcript_select( void );
 extern void	     transcript_parse( transcript_t *tran );
 extern void	     transcript_free( void );
-extern void	     t_new( int type, const filepath_t *fullname,
+extern void	     t_new( rad_Transcript_t type, const filepath_t *fullname,
 			    const filepath_t *shortname,
 			    const filepath_t *kfile );
 extern int	     t_exclude( const filepath_t *path );

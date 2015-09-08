@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2007, 2013-2014 Regents of The University of Michigan.
+ * Copyright (c) 2003, 2007, 2013-2015 Regents of The University of Michigan.
  * All Rights Reserved.  See COPYRIGHT.
  */
 
@@ -19,6 +19,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <sysexits.h>
+#include <stdarg.h>
 
 #include "applefile.h"
 #include "base64.h"
@@ -32,8 +33,8 @@
 #include "wildcard.h"
 
 static const filepath_t * convert_path_type( const filepath_t *path );
-int read_kfile( const filepath_t *kfile, int location );
-static void t_remove( int type, const filepath_t *shortname );
+static int transcript_kfile( const filepath_t *kfile, int location );
+static void t_remove( rad_Transcript_t type, const filepath_t *shortname );
 static void t_display( void );
 
 transcript_t	 		*tran_head = (transcript_t *) NULL;
@@ -62,6 +63,43 @@ unsigned int                    transcripts_unbuffered = 0;
 
 /* switches governing the behavior of transcript_check() */
 int radmind_transcript_check_switches = RADTC_SWS_UID | RADTC_SWS_GID | RADTC_SWS_MTIME | RADTC_SWS_MODE | RADTC_SWS_SIZE;
+
+
+#if defined(__GNUC__)
+#  define HAVE_ATTRIBUTE_FORMAT_PRINTF 1
+#endif /* __GNUC__ */
+
+
+#if defined(HAVE_ATTRIBUTE_FORMAT_PRINTF)
+#  define ATTR_PRINTF(_begin,_end) __attribute__ (( format( printf,_begin,_end)))
+#else
+#  define ATTR_PRINTF(_begin,_end) /* empty */
+#endif /* HAVE_ATTRIBUTE_FORMAT_PRINTF */
+
+
+static int t_fprintf_err(FILE *out, const transcript_t *tran, 
+			 const char *fmt, ...) ATTR_PRINTF(3,4);
+
+
+static int
+t_fprintf_err(FILE *out, const transcript_t *tran, const char *fmt, ...) 
+{
+  int result = 0;
+  va_list ap;
+
+  va_start(ap, fmt);
+
+  if ((out != (FILE *) NULL) && (tran != (transcript_t *) NULL))  {
+      fprintf(out, "'%s' line %u: ", tran->t_fullname, tran->t_linenum);
+      vfprintf(out, fmt, ap);
+  }
+
+  va_end(ap);
+
+  return result;
+} /* end of t_fprintf_err() */
+
+
 
 const static filepath_t * 
 convert_path_type( const filepath_t *path )
@@ -112,6 +150,8 @@ convert_path_type( const filepath_t *path )
     return( buf );
 }
 
+
+
     void 
 transcript_parse( transcript_t *tran ) 
 {
@@ -132,8 +172,8 @@ transcript_parse( transcript_t *tran )
 	      tran->t_eof = 1;
 	      if (debug > 2)
 	          alert_transcript(NULL, stderr, tran,
-				   "transcript_parse() - empty (buffer EOF, skipping %u)",
-				   counted);
+				   "%s() - empty (buffer EOF, skipping %u)",
+				   __func__, counted);
 
 	      return;
 	  }
@@ -150,8 +190,8 @@ transcript_parse( transcript_t *tran )
 	  }
 	  if (debug > 2) {
 	      alert_transcript (NULL, stderr, tran, 
-				"transcript_parse() - buffered line after skipping %u",
-				counted);
+				"%s() - buffered line after skipping %u",
+				__func__, counted);
 	      fprintf(stderr, "*\t'%s'\n", line);
 	  }
 
@@ -161,8 +201,8 @@ transcript_parse( transcript_t *tran )
 	    tran->t_eof = 1;
 	    if (debug > 2)
 	        alert_transcript(NULL, stderr, tran, 
-				 "transcript_parse() - empty (EOF, skipping %u)",
-				 counted); 
+				 "%s() - empty (EOF, skipping %u)",
+				 __func__, counted); 
 
 	    return;
 	}
@@ -172,21 +212,20 @@ transcript_parse( transcript_t *tran )
 	/* check to see if line contains the whole line */
 	length = strlen( line );
 	if ( line[ length - 1 ] != '\n' ) {
-	    fprintf( stderr, "%s: line %d: line too long\n",
-		    tran->t_fullname, tran->t_linenum );
+	    t_fprintf_err(stderr, tran, "line too long\n");
 	    exit(EX_SOFTWARE);  /* from <sysexits.h> */
 	} 
+
     } while ((( ac = argcargv( line, &av )) == 0 ) || ( *av[ 0 ] == '#' ));
 
     if ( ac < 3 ) {
-	fprintf( stderr, "%s: line %d: minimum 3 arguments, got %d\n",
-		tran->t_fullname, tran->t_linenum, ac );
+        t_fprintf_err(stderr, tran, "minimum 3 arguments, got %d\n",  ac );
 	exit( EX_DATAERR ); /* from <sysexits.h> */
     }
 
     if ( strlen( av[ 0 ] ) != 1 ) {
-	fprintf( stderr, "%s: line %d: %s is too long to be a type\n",
-		tran->t_fullname, tran->t_linenum, av[ 0 ] );
+        t_fprintf_err(stderr, tran, "%s is too long to be a type\n",
+		       av[ 0 ] );
 	exit( EX_DATAERR ); /* from <sysexits.h> */
     }
 
@@ -204,29 +243,28 @@ transcript_parse( transcript_t *tran )
 
     tran->t_pinfo.pi_type = av[ 0 ][ 0 ];
     if (( epath = (filepath_t *) decode( av[ 1 ] )) == NULL ) {
-	fprintf( stderr, "%s: line %d: path too long\n",
-		 (const char *) tran->t_fullname, tran->t_linenum );
+        t_fprintf_err( stderr, tran, "path decoding failed\n");
 	exit( EX_DATAERR ); /* from <sysexits.h> */
     }
 
     /* Convert path to match transcript type */
     if (( epath = convert_path_type( epath )) == NULL ) {;
-	fprintf( stderr, "%s: line %d: path too long\n",
-		 (const char *) tran->t_fullname,  tran->t_linenum );
+        t_fprintf_err( stderr, tran, "path conversion failed\n");
 	exit( EX_DATAERR ); /* from <sysexits.h> */
     }
 
     if ( pathcasecmp( epath, tran->t_pinfo.pi_name, case_sensitive ) <= 0 ) {
-	fprintf( stderr, "%s: line %d: bad sort order\n",
-		 (const char *) tran->t_fullname, tran->t_linenum );
+        t_fprintf_err( stderr, tran, "bad sort order\n");
 	exit( EX_DATAERR ); /* from <sysexits.h> */
     }
 
-    filepath_ncpy( tran->t_pinfo.pi_name, epath, sizeof(tran->t_pinfo.pi_name)-1);
+    filepath_ncpy( tran->t_pinfo.pi_name, epath,
+		   sizeof(tran->t_pinfo.pi_name)-1);
 
     if (debug > 3)
-        alert_transcript (NULL, stderr, tran, "transcript_parse() - type='%c', path='%s'",
-			  tran->t_pinfo.pi_type, (const char *) epath);
+        alert_transcript (NULL, stderr, tran, "%s() - type='%c', path='%s'",
+			  __func__, tran->t_pinfo.pi_type,
+			  (const char *) epath);
     
     memset (&(tran->t_pinfo.pi_stat), 0, sizeof(tran->t_pinfo.pi_stat));
 
@@ -234,8 +272,8 @@ transcript_parse( transcript_t *tran )
     switch( *av[ 0 ] ) {
     case 'd':				    /* dir */
 	if (( ac != 5 ) && ( ac != 6 )) {
-	    fprintf( stderr, "%s: line %d: expected 5 or 6 arguments, got %d\n",
-		     (const char *) tran->t_fullname, tran->t_linenum, ac );
+	    t_fprintf_err( stderr, tran, "expected 5 or 6 arguments, got %d\n",
+			   ac );
 	    exit( EX_DATAERR ); /* from <sysexits.h> */
 	}
 
@@ -254,8 +292,8 @@ transcript_parse( transcript_t *tran )
     case 'D':
     case 's':
 	if ( ac != 5 ) {
-	    fprintf( stderr, "%s: line %d: expected 5 arguments, got %d\n",
-		     (const char *) tran->t_fullname, tran->t_linenum, ac );
+	    t_fprintf_err( stderr, tran, "expected 5 arguments, got %d\n",
+			   ac );
 	    exit( EX_DATAERR );
 	}
 	tran->t_pinfo.pi_stat.st_mode = strtol( av[ 2 ], NULL, 8 );
@@ -266,8 +304,8 @@ transcript_parse( transcript_t *tran )
     case 'b':				    /* block or char */
     case 'c':
 	if ( ac != 7 ) {
-	    fprintf( stderr, "%s: line %d: expected 7 arguments, got %d\n",
-		    tran->t_fullname, tran->t_linenum, ac );
+	    t_fprintf_err( stderr, tran, "expected 7 arguments, got %d\n",
+			   ac );
 	    exit( EX_DATAERR );
 	}
 	tran->t_pinfo.pi_stat.st_mode = strtol( av[ 2 ], NULL, 8 );
@@ -288,13 +326,13 @@ transcript_parse( transcript_t *tran )
 	    tran->t_pinfo.pi_stat.st_uid = atoi( av[ 3 ] );
 	    tran->t_pinfo.pi_stat.st_gid = atoi( av[ 4 ] );
 	} else {
-	    fprintf( stderr, "%s: line %d: expected 3 or 6 arguments, got %d\n",
-		    tran->t_fullname, tran->t_linenum, ac );
+	    t_fprintf_err( stderr, tran, "symlink expected 3 or 6 arguments, got %d\n",
+			   ac );
 	    exit( EX_DATAERR );
 	}
+
 	if (( epath = (filepath_t *) decode( av[ ac - 1 ] )) == NULL ) {
-	    fprintf( stderr, "%s: line %d: target path too long\n",
-		tran->t_fullname, tran->t_linenum );
+	    t_fprintf_err( stderr, tran, "symlink path decode failed\n");
 	    exit( EX_DATAERR );
 	}
 	strncpy( (char *) tran->t_pinfo.pi_link, 
@@ -303,18 +341,17 @@ transcript_parse( transcript_t *tran )
 
     case 'h':				    /* hard */
 	if ( ac != 3 ) {
-	    fprintf( stderr, "%s: line %d: expected 3 arguments, got %d\n",
-		    tran->t_fullname, tran->t_linenum, ac );
+	    t_fprintf_err( stderr, tran, "hardlink expected 3 arguments, got %d\n",
+			   ac );
 	    exit( EX_DATAERR );
 	}
 	if (( epath = (filepath_t *) decode( av[ 2 ] )) == NULL ) {
-	    fprintf( stderr, "%s: line %d: target path too long\n",
-		tran->t_fullname, tran->t_linenum );
+	    t_fprintf_err(stderr, tran, "hardlink target path decode failed\n");
+			  
 	    exit( EX_DATAERR );
 	}
 	if (( epath = convert_path_type( epath )) == NULL ) {
-	    fprintf( stderr, "%s: line %d: path too long\n",
-		    tran->t_fullname, tran->t_linenum );
+	    t_fprintf_err( stderr, tran, "hardlink path conversion failed\n");
 	    exit( EX_DATAERR );
 	}
 	strncpy( (char *) tran->t_pinfo.pi_link, 
@@ -324,8 +361,8 @@ transcript_parse( transcript_t *tran )
     case 'a':				    /* hfs applefile */
     case 'f':				    /* file */
 	if ( ac != 8 ) {
-	    fprintf( stderr, "%s: line %d: expected 8 arguments, got %d\n",
-		    tran->t_fullname, tran->t_linenum, ac );
+	    t_fprintf_err( stderr, tran, "expected 8 arguments, got %d\n",
+			   ac );
 	    exit( EX_DATAERR );
 	}
 	tran->t_pinfo.pi_stat.st_mode = strtol( av[ 2 ], NULL, 8 );
@@ -335,8 +372,7 @@ transcript_parse( transcript_t *tran )
 	tran->t_pinfo.pi_stat.st_size = strtoofft( av[ 6 ], NULL, 10 );
 	if ( tran->t_type != T_NEGATIVE ) {
 	    if (( cksum ) && ( strcmp( "-", av [ 7 ] ) == 0  )) {
-		fprintf( stderr, "%s: line %d: no cksums in transcript\n",
-			tran->t_fullname, tran->t_linenum );
+	        t_fprintf_err( stderr, tran, "no cksums in transcript\n" );
 		exit( EX_DATAERR );
 	    }
 	}
@@ -346,11 +382,11 @@ transcript_parse( transcript_t *tran )
 	break;
 
     default:
-	fprintf( stderr,
-	    "%s: line %d: unknown file type '%c'\n",
-	    tran->t_fullname, tran->t_linenum, *av[ 0 ] );
+        t_fprintf_err( stderr, tran, "unknown file type '%c'\n", *av[ 0 ] );
 	exit( EX_DATAERR );
     }
+
+    tran->total_objects ++;
 
     return;
 } /* end of transcript_parse() */
@@ -857,13 +893,16 @@ transcript_select( void )
 	    }
 	}
 
+	/* Count the times this transcript contributed something */
+	begin_tran->active_objects ++;
+
 	return( begin_tran );
-    }
-}
+    } /* end of for(;;) */
+} /* end of transcript_select() */
 
 
 /* 
- * REturn values:
+ * Return values:
  * 0 --
  * 1 -- is directory
  */
@@ -873,10 +912,11 @@ transcript_check( const filepath_t *path, struct stat *st, char *type,
 {
     pathinfo_t		pi;
     int			enter = T_COMP_ISFILE;	/* Default transcript_check() return value */
-    int 		len;
+    ssize_t 		len;  /* readlink() result */
     char		epath[ MAXPATHLEN ];
     char		*linkpath;
     transcript_t	*tran = NULL;
+    transcript_t	*temp_tran;
 
     fs_minus = 0;
 
@@ -895,9 +935,11 @@ transcript_check( const filepath_t *path, struct stat *st, char *type,
 		if ( exclude_warnings ) {
 		    fprintf( stderr, "Warning: excluding %s\n", path );
 		}
-
+		
 		/* move the transcripts ahead */
-		(void) transcript_select();
+		temp_tran = transcript_select();
+		if  (temp_tran->active_objects > 0)
+		  temp_tran->active_objects --;
 
 		return( T_COMP_ISFILE );
 	    }
@@ -939,8 +981,8 @@ transcript_check( const filepath_t *path, struct stat *st, char *type,
 	case T_MOVE_FS:
 	    if (debug > 0)
 	        alert_transcript(NULL, stderr, tran, 
-				 "t_compare() returns T_MOVE_FS, transcript_check() returns %d",
-				 enter);
+				 "%s() returns T_MOVE_FS, transcript_check() returns %d",
+				 __func__, enter);
 	    return( enter );
 
 	case T_MOVE_BOTH :
@@ -953,8 +995,8 @@ transcript_check( const filepath_t *path, struct stat *st, char *type,
 
 	    if (debug > 0)
 	        alert_transcript(NULL, stderr, tran,
-			       "t_compare() returns T_MOVE_BOTH, transcript_check() returns %d",
-			       enter);
+				 "%s() returns T_MOVE_BOTH, transcript_check() returns %d",
+				 __func__, enter);
 	    return( enter );
 
 	case T_MOVE_TRAN :
@@ -963,34 +1005,36 @@ transcript_check( const filepath_t *path, struct stat *st, char *type,
 
 	default :
 	    alert_transcript("FATAL: ", stderr, tran, 
-			     "t_compare() returned an unexpected value for '%s'\n",
-			     path);
+			     "%s() returned an unexpected value for '%s'\n",
+			     __func__, path);
 	    exit( EX_SOFTWARE);
 	} /* switch (t_compare()) ... */
     }
 
-    fprintf(stderr, "t_compare() falls off the end for '%s'\n",
-	    path);
+    fprintf(stderr, "%s() falls off the end for '%s'\n",
+	    __func__, path);
 
     return (T_COMP_ERROR);
 } /* end of transcript_check() */
 
     void
-t_new( int type, const filepath_t *fullname, const filepath_t *shortname, const filepath_t *kfile ) 
+t_new( rad_Transcript_t type, const filepath_t *fullname, const filepath_t *shortname, const filepath_t *kfile ) 
 {
     transcript_t	 *new;
-    static int id=0;
+    static unsigned int id=0;
     ssize_t got;   /* result of read() */
 
     id++;
     if (( new = (transcript_t *)calloc(1, sizeof( transcript_t )))
 	    == NULL ) {
-	perror( "malloc" );
+	perror( "malloc for new transcript_t" );
 	exit( EX_OSERR );
     }
     if (debug > 4)
-	fprintf (stderr, "*debug: t_new(%d, '%s', '%s', '%s'), calloc() returns %p\n",
-		type, (char *) fullname, (char *) shortname, (char *) kfile, new);
+	fprintf (stderr,
+		 "*debug: %s(%u, '%s', '%s', '%s'), calloc() returns %p\n",
+		 __func__, type, (char *) fullname, (char *) shortname,
+		 (char *) kfile, new);
 
     new->id = id;
 
@@ -1025,7 +1069,7 @@ t_new( int type, const filepath_t *fullname, const filepath_t *shortname, const 
 	}
 
 	if (debug > 3)
-	  fprintf (stderr, "*debug: t_new (%d, ..., '%s', '%s') id=%u\n",
+	  fprintf (stderr, "*debug: t_new (%u, ..., '%s', '%s') id=%u\n",
 		   type, (const char *) shortname, (const char *) kfile, id);
 
 	/* Check to see if we do buffering. */
@@ -1061,8 +1105,8 @@ t_new( int type, const filepath_t *fullname, const filepath_t *shortname, const 
 	      else {
 		if (debug > 4)
 			fprintf (stderr,
-				 "*debug: t_new() - calloc(1, %zu) returns 0x%p\n",
-				 buflen, new->buffered);
+				 "*debug: %s() - calloc(1, %zu) returns 0x%p\n",
+				 __func__, buflen, new->buffered);
 
 		got = read (fileno(new->t_in), new->buffered, buflen);
 
@@ -1090,7 +1134,7 @@ t_new( int type, const filepath_t *fullname, const filepath_t *shortname, const 
 
     default :
     	if (debug > 1)
-	   fprintf (stderr, "*debug: t_new (%d, ..., '%s', '%s') id=%u, type error?\n", 
+	   fprintf (stderr, "*debug: t_new (%u, ..., '%s', '%s') id=%u, type error?\n", 
 		    type, (const char *) shortname, (const char *) kfile, id);
 	break;
     }
@@ -1105,7 +1149,7 @@ t_new( int type, const filepath_t *fullname, const filepath_t *shortname, const 
 }
 
     static void
-t_remove( int type, const filepath_t *shortname )
+t_remove( rad_Transcript_t type, const filepath_t *shortname )
 {
     transcript_t
           **p_next = &tran_head,
@@ -1114,14 +1158,16 @@ t_remove( int type, const filepath_t *shortname )
     unsigned int count = 0;
 
     if (debug > 2)
-        fprintf (stderr, "*debug: t_remove (%d, '%s')\n", type, shortname);
+        fprintf (stderr, "*debug: %s(%u, '%s')\n", 
+		 __func__, type, shortname);
 
     while (*p_next != (transcript_t *) NULL)
       {
 	cur = *p_next;
 
 	if (debug > 3)
-	    alert_transcript (NULL, stderr, cur, "t_remove() - check type=%d", cur->t_type); 
+	    alert_transcript (NULL, stderr, cur,
+			      "%s() - check type=%u", __func__, cur->t_type); 
 
 	if (debug > 4)
 	    fprintf (stderr, "*debug: at %p\n", cur);
@@ -1131,8 +1177,8 @@ t_remove( int type, const filepath_t *shortname )
 
 	   if (debug > 2)
 	   	fprintf (stderr,
-			 "*debug: t_remove () - found ID=%u after %u\n",
-			 cur->id, last_id);
+			 "*debug: %s() - found ID=%u after %u\n",
+			 __func__, cur->id, last_id);
 
 	   /* Cleanup unused file descriptors. */
  	   if (cur->t_in) {
@@ -1161,7 +1207,7 @@ t_remove( int type, const filepath_t *shortname )
 
     if ((count != 1) && (debug > 2))
     	fprintf (stderr,
-		 "*debug: t_remove (%d, '%s') found %u instances\n",
+		 "*debug: t_remove (%u, '%s') found %u instances\n",
 		 type, shortname, count);
 
     return;
@@ -1173,7 +1219,7 @@ t_display( void )
     transcript_t		*cur = NULL;
 
     for ( cur = tran_head; cur != NULL; cur = cur->t_next ) {
-	printf( "%d: ", cur->t_num );
+	printf( "%u: ", cur->t_num );
 	switch( cur->t_type ) {
 	case T_POSITIVE:
 	    printf( "p %s\n", cur->t_shortname );
@@ -1217,7 +1263,7 @@ transcript_init( const filepath_t *kfile, int location )
     }
 
     if (( kdir = filepath_dup( kfile )) == NULL ) {
-        perror( "strdup failed" );
+        perror( "filepath_dup from kfile to kdir" );
         exit( EX_OSERR );
     }
     if (( p = (filepath_t *) strrchr( (const char *) kdir, '/' )) == NULL ) {
@@ -1229,22 +1275,22 @@ transcript_init( const filepath_t *kfile, int location )
         *p = (filepath_t) '\0';
     }
     if (( kfile_list = list_new( )) == NULL ) {
-	perror( "list_new" );
+	perror( "list_new for kfile_list" );
 	exit( EX_OSERR );
     }
     if ( list_insert( kfile_list, kfile ) != 0 ) {
-	perror( "list_insert" );
+	perror( "list_insert for kfile_list" );
 	exit( EX_SOFTWARE );
     }
     if (( special_list = list_new( )) == NULL ) {
-	perror( "list_new" );
+	perror( "list_new for special_list" );
 	exit( EX_OSERR );
     }
     if (( exclude_list = list_new()) == NULL ) {
-	perror( "list_new" );
+	perror( "list_new for exclude_list" );
 	exit( EX_OSERR );
     }
-    if ( read_kfile( kfile,location ) != 0 ) {
+    if ( transcript_kfile( kfile, location ) != 0 ) {
 	exit( EX_SOFTWARE );
     }
 
@@ -1269,13 +1315,20 @@ transcript_init( const filepath_t *kfile, int location )
     return;
 }
 
-    int
-read_kfile( const filepath_t *kfile, int location )
+/*
+ * Process command ('k') files 
+ *
+ * Returns:
+ * -1 on error (no command file, memory exhaustion, data error, etc. )
+ */
+static    int
+transcript_kfile( const filepath_t *kfile, int location )
 {
     int		        length,
-      			ac,
-      			linenum = 0,
-      			minus = 0;
+      			ac;
+    unsigned char       minus = 0; /* Flag - 0 or 1 */
+    unsigned int    	linenum = 0;
+    unsigned int        objects = 0;  /* Count of real objects in command file */
     char 	     	line[ MAXPATHLEN ];
     filepath_t        	fullpath[ MAXPATHLEN ];
     filepath_t         *subpath;
@@ -1293,16 +1346,18 @@ read_kfile( const filepath_t *kfile, int location )
     depth++;
     if (debug > 2)
     	fprintf (stderr,
-		 "*debug: read_kfile('%s', %d) fd=%d, depth=%d\n", 
-		 (const char *) kfile, location, fileno(fp), depth);
+		 "*debug: %s('%s', %d) fd=%d, depth=%d\n", 
+		 __func__, (const char *) kfile, location, fileno(fp),
+		 depth);
 
     while ( fgets( line, sizeof( line ), fp ) != NULL ) {
 	linenum++;
 	length = strlen( line );
 	if ( line[ length - 1 ] != '\n' ) {
-	    fprintf( stderr, "command file %s: line %d: line too long\n",
+	    fprintf( stderr, "command file '%s' line %u: line too long\n",
 		     (const char *) kfile, linenum );
 	    depth--;
+	    fclose( fp );
 	    return( -1 );
 	}
 
@@ -1323,9 +1378,10 @@ read_kfile( const filepath_t *kfile, int location )
 
 	if ( ac != 2 ) {
 	    fprintf( stderr,
-		"command file %s: line %d: expected 2 arguments, got %d\n",
+		"command file '%s' line %u: expected 2 arguments, got %d\n",
 		     (const char *) kfile, linenum, ac );
 	    depth--;
+	    fclose( fp );
 	    return( -1 );
 	} 
 
@@ -1333,11 +1389,12 @@ read_kfile( const filepath_t *kfile, int location )
 	case K_CLIENT:
 	  if ( snprintf( (char *) fullpath, MAXPATHLEN, "%s%s", (char *) kdir,
 		    av[ 1 ] ) >= MAXPATHLEN ) {
-		fprintf( stderr, "comand file %s: line %d: path too long\n",
+		fprintf( stderr, "command file '%s' line %u: path too long\n",
 			kfile, linenum );
-		fprintf( stderr, "command file %s: line %d: %s%s\n",
+		fprintf( stderr, "command file '%s' line %u: %s%s\n",
 			kfile, linenum, kdir, av[ 1 ] );
 	        depth--;
+		fclose( fp );
 		return( -1 );
 	    }
 	    break;
@@ -1350,9 +1407,9 @@ read_kfile( const filepath_t *kfile, int location )
 	    }
 	    if ( snprintf( (char *) fullpath, MAXPATHLEN, "%s/%s/%s",
 			   _RADMIND_PATH,  (char *) subpath, av[ 1 ] ) >= MAXPATHLEN ) {
-		fprintf( stderr, "command file %s: line %d: path too long\n",
+		fprintf( stderr, "command file '%s' line %u: path too long\n",
 			kfile, linenum );
-		fprintf( stderr, "command file %s: line %d: %s%s\n",
+		fprintf( stderr, "command file '%s' line %u: %s%s\n",
 			kfile, linenum, kdir, av[ 1 ] );
 		depth--;
 		return( -1 );
@@ -1360,71 +1417,79 @@ read_kfile( const filepath_t *kfile, int location )
 	    break;
 
 	default:
-	    fprintf( stderr, "unknown location\n" );
+	    fprintf( stderr, "unknown location (%u)\n", location );
 	    depth--;
 	    return( -1 );
-	}
+	} /* switch(location) */
 
+	objects ++;  				/* if we error-return, no warning generated */ 
 	switch( *av[ 0 ] ) {
 	case 'k':				/* command file */
 	    if ( minus ) {
 		/* Error on minus command files for now */
-		fprintf( stderr, "command file %s: line %d: "
-		    "minus 'k' not supported\n", kfile, linenum );
+		fprintf( stderr, "command file '%s' line %u: "
+			 "minus 'k' not supported\n", kfile, linenum );
 		depth--;
 		return( -1 );
-	    } else {
-		if ( list_check( kfile_list, fullpath )) {
-		    fprintf( stderr,
-			"command file %s: line %d: command file loop: %s already included\n",
-			kfile, linenum, av[ 1 ] );
-		    depth--;
-		    return( -1 );
-		}
-		if ( list_insert( kfile_list, fullpath ) != 0 ) {
-		    perror( "list_insert" );
-		    depth --;
-		    return( -1 );
-		}
-		if ( read_kfile( fullpath, location ) != 0 ) {
-		    if(debug) 
-		    	fprintf (stderr,
-				 "*debug: read_kfile ('%s', ...) failed\n",
-				 (char *) fullpath);
-		    depth--;
-		    return( -1 );
-		}
+	    }
+	    
+	    if ( list_check( kfile_list, fullpath )) {
+	        fprintf( stderr,
+			 "command file '%s' line %u: command file loop: '%s' already included\n",
+			 kfile, linenum, av[ 1 ] );
+		depth--;
+		return( -1 );
+	    }
+	
+
+	    if ( list_insert( kfile_list, fullpath ) != 0 ) {
+	        perror( "list_insert into kfile_list from fullpath" );
+		depth --;
+		fclose( fp );
+		return( -1 );
+	    }
+
+	    if ( transcript_kfile( fullpath, location ) != 0 ) {
+	        if(debug) 
+		    fprintf (stderr,
+			     "*debug: %s() - transcript_kfile ('%s', ...) failed\n",
+			     __func__, (char *) fullpath);
+		depth--;
+		fclose( fp );
+		return( -1 );
 	    }
 
 	    break;
 
+
 	case 'n':				/* negative */
 	    if ( minus ) { 
-	      t_remove( T_NEGATIVE, (filepath_t *) av[ 1 ] );
+	        t_remove( T_NEGATIVE, (filepath_t *) av[ 1 ] );
 	    } else {
-	      t_new( T_NEGATIVE, fullpath, (filepath_t *) av[ 1 ], kfile );
+	        t_new( T_NEGATIVE, fullpath, (filepath_t *) av[ 1 ], kfile );
 	    }
 	    break;
 
 	case 'p':				/* positive */
 	    if ( minus ) {
-	      t_remove( T_POSITIVE, (filepath_t *) av[ 1 ] );
+	        t_remove( T_POSITIVE, (filepath_t *) av[ 1 ] );
 	    } else {
-	      t_new( T_POSITIVE, fullpath, (filepath_t *) av[ 1 ], kfile );
+	        t_new( T_POSITIVE, fullpath, (filepath_t *) av[ 1 ], kfile );
 	    }
 	    break;
 
 	case 'x':				/* exclude */
 	  if (( d_pattern = (filepath_t *) decode( av[ 1 ] )) == NULL ) {
-		fprintf( stderr, "%s: line %d: decode buffer too small\n",
+		fprintf( stderr, "'%s' line %u: decode buffer too small\n",
 			 (const char *) kfile, linenum );
 	    }
 
 	    /* Convert path to match transcript type */
 	    if (( d_pattern = convert_path_type( d_pattern )) == NULL ) {
-		fprintf( stderr, "%s: line %d: path too long\n",
+		fprintf( stderr, "'%s' line %u: path too long\n",
 			 (const char *) kfile, linenum );
 		depth--;
+		fclose( fp );
 		exit( EX_DATAERR );
 	    }
 
@@ -1433,8 +1498,9 @@ read_kfile( const filepath_t *kfile, int location )
 	    } else {
 		if ( !list_check( exclude_list, d_pattern )) {
 		    if ( list_insert( exclude_list, d_pattern ) != 0 ) {
-			perror( "list_insert" );
+			perror( "list_insert into exclode_list from d_pattern" );
 			depth--;
+			fclose( fp );
 			return( -1 );
 		    }
 		}
@@ -1446,9 +1512,10 @@ read_kfile( const filepath_t *kfile, int location )
 
 	    /* Convert path to match transcript type */
 	    if (( path = convert_path_type( path )) == NULL ) {
-		fprintf( stderr, "%s: line %d: path too long\n",
+		fprintf( stderr, "'%s' line %u: path too long\n",
 			 (const char *) kfile, linenum );
 		depth--; 
+		fclose( fp );
 		exit( EX_DATAERR );
 	    }
 
@@ -1459,8 +1526,9 @@ read_kfile( const filepath_t *kfile, int location )
 	    } else {
 		if ( !list_check( special_list, path )) {
 		    if ( list_insert( special_list, path ) != 0 ) {
-			perror( "list_insert" );
+			perror( "list_insert into special_list from path" );
 			depth--;
+			fclose( fp );
 			return( -1 );
 		    }
 		}
@@ -1469,18 +1537,24 @@ read_kfile( const filepath_t *kfile, int location )
 	    break;
 
 	default:
-	    fprintf( stderr, "command file %s: line %d: '%s' invalid\n",
+	    fprintf( stderr, "command file '%s' line %u: '%s' invalid\n",
 		     (const char *) kfile, linenum, av[ 0 ] );
 	    depth--;
+	    fclose( fp );
 	    return( -1 );
 	}
     }
 
     if (debug > 2)
-    	fprintf (stderr, "*debug: end of read_kfile() fd=%d, depth=%d\n", 
-		fileno (fp), depth);
+    	fprintf (stderr, "*debug: %s() end .. fd=%d, depth=%d\n", 
+		 __func__, fileno (fp), depth);
 
     depth--;
+
+    if ((objects == 0)  && (verbose > 0)) {
+        fprintf (stderr, "Warning: %2u objects in %2u lines of command file '%s'\n",
+		 objects, linenum, (const char *) kfile);
+    }
 
     if ( fclose( fp ) != 0 ) {
         perror( (const char *) kfile );
@@ -1488,7 +1562,8 @@ read_kfile( const filepath_t *kfile, int location )
     }
 
     return( 0 );
-}
+} /* end of transcript_kfile() */
+
 
     void
 transcript_free( )
@@ -1503,6 +1578,30 @@ transcript_free( )
 
     while ( tran_head != NULL ) {
 	next = tran_head->t_next;
+
+	/* Generate warning messages if asked
+	 * and the transcript isn't the dummy transcript */
+	if ( (tran_head->t_shortname[0] != '\0') &&
+	     ((debug > 0) || (verbose > 0))) {
+
+	    /* Use verbose (or debug) to complain about counts */
+	    unsigned int limit = (verbose>debug ? verbose : debug) - 1;
+
+	    if (tran_head->total_objects == 0) {
+	        fprintf (stderr, "Warning: No objects in ");
+		fprintf_transcript_id (stderr, tran_head);
+		fprintf (stderr, "\n");
+	    }
+	    else if ((tran_head->active_objects <= limit) &&
+		     (tran_head->active_objects < tran_head->total_objects)) {
+	        fprintf (stderr,
+			 "Warning: %2u active objects of %3u objects in ",
+			 tran_head->active_objects, 
+			 tran_head->total_objects);
+		fprintf_transcript_id (stderr, tran_head);
+		fprintf (stderr, "\n");
+	    }
+	}
 
 	if ( tran_head->t_in != NULL ) {
 	    fclose( tran_head->t_in );
@@ -1529,7 +1628,7 @@ snprintf_transcript_id (char *buff, size_t bufflen, const transcript_t *tran)
     }
 
     return snprintf (buff, bufflen, 
-		     "t:['%s'] k:['%s'] line %d, ID=%u",
+		     "t:['%s'] k:['%s'] line %u, ID=%u",
 		     tran->t_shortname, tran->t_kfile,
 		     tran->t_linenum, tran->id);
     
@@ -1544,7 +1643,8 @@ fprintf_transcript_id (FILE *out, const transcript_t *tran)
 	return (-1);
     }
 
-    return fprintf (out, "t:['%s'] k:['%s'] line %d, ID=%u",
+    return fprintf (out,
+		    "t:['%s'] k:['%s'] line %u, ID=%u",
 		    tran->t_shortname, tran->t_kfile,
 		    tran->t_linenum, tran->id);
     

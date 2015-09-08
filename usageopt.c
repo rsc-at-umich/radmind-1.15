@@ -4,12 +4,11 @@
  * A library to improve getopt_long() by making a usage function easier
  * to write.
  * 
- * Copyright (c) 2013, 2014 by the Regents of the University of Michigan 
+ * Copyright (c) 2013-2015 by the Regents of the University of Michigan 
  * All Rights reservered. 
  *
  * Original Author:  Richard S. Conto <rsc@umich.edu> 
  * 
- * CVS Revision: $Id: ipaddr.c,v 1.29 2013/07/11 19:58:57 rsc Exp $
  */
 
 
@@ -26,10 +25,6 @@
 
 #include "usageopt.h"
 
-
-#if defined(WANT_LOGERROR)
-#  include "logerror.h"
-#endif
 
 /*
  * Procedures
@@ -65,16 +60,13 @@ usageopt_is_last_option (const usageopt_t *help)
  */
 
 struct option *
-usageopt_option_new (const usageopt_t *list, char **p_optstr)
+usageopt_option_new (const usageopt_t *list, char **p_opt_str)
 {
-#if defined(_LOGERROR_H)
-     static char     _func[] = "usageopt_option_new";
-#endif /* _LOGERROR_H */
      int             size_list;  /* Initialized in for(;;) loop */
-     int	     size_optstr = 0;
+     size_t	     size_opt_str = 0;
      int	     optndx;	
-     char           *optstr = (char *) NULL;
-     char           *optput = "";
+     char           *opt_str = (char *) NULL;
+     char           *opt_put = "";
      const usageopt_t  *each;
      struct option  *new;
      struct option  *put;
@@ -86,14 +78,14 @@ usageopt_option_new (const usageopt_t *list, char **p_optstr)
 	     size_list ++;
 
 	 if (each->longopt.val != '\0') {
-	     size_optstr ++;
+	     size_opt_str ++;
 	     switch (each->longopt.has_arg) {
 	       case optional_argument:
-		   size_optstr += 2;  /* Two ':' in string */
+		   size_opt_str += 2;  /* Two ':' in string */
 		   break;
 
 	       case required_argument:
-		   size_optstr ++;
+		   size_opt_str ++;
 		   break;
 
 	       default:
@@ -103,26 +95,18 @@ usageopt_option_new (const usageopt_t *list, char **p_optstr)
 	 }
      }
 
-#if defined(_LOGERROR_H)
-     debug (2, _func, __FILE__, __LINE__,
-	    "Creating %d options of size %zu", size_list, sizeof(*new));
-#endif /* defined(_LOGERROR_H) */
 
      new = calloc (size_list + 1, sizeof (*new));  /* With an extra, empty one at the end. */
 
-     if ((p_optstr != (char **) NULL) && (size_optstr > 0)) {
-         optstr = malloc (size_optstr + 1);
-	 optput = optstr;
+     if ((p_opt_str != (char **) NULL) && (size_opt_str > 0)) {
+         opt_str = malloc (size_opt_str + 1);
+	 opt_put = opt_str;
 
-	 if (optput)
-	     *optput = '\0';
+	 if (opt_put)
+	     *opt_put = '\0';
      }
 
      if (! new) {
-#if defined(_LOGERROR_H)
-	 error (0, _func, __FILE__, __LINE__, 
-		"calloc (%d, %zu) FAILED", size_list + 1, sizeof(*new));
-#endif /* _LOGERROR_H */
 	 return ((struct option *) NULL);
      }
 
@@ -139,47 +123,38 @@ usageopt_option_new (const usageopt_t *list, char **p_optstr)
 	 if (each->longopt.name != (char *) NULL) {
 	     memcpy ((void *) put, (void *) &(each->longopt), sizeof (*put));
 	   
-#if defined(_LOGERROR_H)
-	     debug (2, _func, __FILE__, __LINE__, "Option #%d: -%c, --%s",
-		    optndx, each->longopt.val, each->longopt.name);
-#endif /* _LOGERROR_H */
 	 }
 	 
 
 	 if (each->longopt.val != '\0') {
 	     for (check = new; check != put; check++) {
 		 if (check->val == each->longopt.val) {
-#if defined(_LOGERROR_H) 
-		     error (0, _func, __FILE__, __LINE__, 
-			    "Duplicate switch character '%c' between '%s' and '%s'", each->longopt.val,
-			    check->name ? check->name : "?", each->longopt.name ? each->longopt.name : "?");
-#endif /* _LOGERROR_H */
 		     free (new);
 		     return ((struct option *) NULL);
 		 }
 	     }
 
-	     *optput = each->longopt.val;
-	     optput++;
+	     *opt_put = each->longopt.val;
+	     opt_put++;
 
 	     switch (each->longopt.has_arg) {
 	       case optional_argument:
-		   *optput = ':';
-		   optput++;
-		   *optput = ':';
-		   optput++;
+		   *opt_put = ':';
+		   opt_put++;
+		   *opt_put = ':';
+		   opt_put++;
 		   break;
 
 	       case required_argument:
-		   *optput = ':';
-		   optput++;
+		   *opt_put = ':';
+		   opt_put++;
 		   break;
 
 	       default:
 		   /* nothing */
 		   break;
 	     } /* switch (each->longopt.has_arg) */
-	     *optput = '\0';
+	     *opt_put = '\0';
 	 }
 
 	 /* Delayed conditional increment. */
@@ -191,21 +166,14 @@ usageopt_option_new (const usageopt_t *list, char **p_optstr)
      /* Zap the terminal 'struct option' */
      memset ((void *) put, 0, sizeof (*put));
 
-     if (p_optstr != (char **) NULL) {
-	 *p_optstr = optstr;
-#if defined(_LOGERROR_H) 
-	 if (optstr) {
-	     debug (2, _func, __FILE__, __LINE__,
-		    "Options string created is \"%s\"", optstr);
-	 }
-#endif /* _LOGERROR_H */
-
-	 optstr = (char *) NULL;
+     if (p_opt_str != (char **) NULL) {
+	 *p_opt_str = opt_str;
+	 opt_str = (char *) NULL;
      }
-     else if (optstr != (char *) NULL) {
+     else if (opt_str != (char *) NULL) {
 	 /* Shouldn't happen. */
-	 free (optstr);
-	 optstr = (char *) NULL;
+	 free (opt_str);
+	 opt_str = (char *) NULL;
      }
 
      return (new);
@@ -363,14 +331,14 @@ vusageopt_usagef (FILE *out, unsigned int verbose, const char *progname,
 	    width += printlen;
 	}
 
-	printlen = fprintf (out, " <%s> ", str);
+	printlen = fprintf (out, " <%s>", str);
 	if (printlen <= 0)
 	    exit(EX_IOERR);
 	
 	width += printlen;
 
 	if (each->longopt.has_arg == optional_argument) {
-	    printlen = fprintf (out, " ]");
+	    printlen = fprintf (out, "]");
 	    if (printlen <= 0)
 	        exit(EX_IOERR);
 
@@ -441,7 +409,7 @@ vusageopt_usagef (FILE *out, unsigned int verbose, const char *progname,
 
 	    width += printlen;
 	    if (each->longopt.has_arg == optional_argument) {
-	        printlen = fprintf (out, " ]");
+	        printlen = fprintf (out, "]");
 		if (printlen <= 0)
 		    exit(EX_IOERR);
 
@@ -449,7 +417,7 @@ vusageopt_usagef (FILE *out, unsigned int verbose, const char *progname,
 	    }
 	} /* if (each->longopt.has_arg != no_arguments) */
  
-	printlen = fprintf (out, "]");
+	printlen = fprintf (out, "]"); 
 	if (printlen <= 0)
 	    exit(EX_IOERR);
 
@@ -458,7 +426,11 @@ vusageopt_usagef (FILE *out, unsigned int verbose, const char *progname,
     } /* end of for(each ... over command line arguments.) */
 
     if ((fmt != (char *) NULL) && (*fmt != '\0')) {
-        printlen = vfprintf (out, fmt, ap);
+        printlen = fprintf(out, " ");
+	if (printlen < 0)
+	  exit(EX_IOERR);
+
+        printlen = vfprintf (out, fmt, ap);  /* Only use of 'ap', don't need to copy/reset */
 	if (printlen < 0)
 	    exit(EX_IOERR);
     }
@@ -503,12 +475,12 @@ vusageopt_usagef (FILE *out, unsigned int verbose, const char *progname,
 			fprintf (out, " [");
 		    }
 		    
-		    printlen = fprintf (out, " <%s> ", str);
+		    printlen = fprintf (out, " <%s>", str);
 		    if (printlen <= 0)
 		        exit(EX_IOERR);
 
 		    if (each->longopt.has_arg == optional_argument) {
-		        printlen = fprintf (out, " ]");
+		        printlen = fprintf (out, "]");
 			if (printlen <= 0)
 			    exit(EX_IOERR);
 		    }
